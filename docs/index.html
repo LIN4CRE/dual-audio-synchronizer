@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dual Audio Synchronizer v2.0 — Phase-Locked Multi-Speaker Engine & Hearing Clarity Studio</title>
+  <meta name="description" content="Zero-drift WASAPI multi-speaker audio synchronizer for Windows 10/11 with automatic ±1 ms clock-drift lock and 2.8 kHz Hearing Clarity DSP." />
+  <meta property="og:title" content="Dual Audio Synchronizer v2.0" />
+  <meta property="og:description" content="Play audio simultaneously through multiple Bluetooth & wired speakers on Windows with automatic ±1 ms phase lock and Hearing Clarity DSP." />
+  <meta property="og:image" content="https://lin4cre.github.io/dual-audio-synchronizer/assets/banner.png" />
+  <meta property="og:type" content="website" />
+  <link rel="icon" type="image/x-icon" href="assets/app.ico" />
+  <style>
+    :root {
+      --bg-deep: #0b0e1a;
+      --bg-card: #15192b;
+      --bg-card-hover: #1c223a;
+      --border-subtle: rgba(148, 163, 184, 0.16);
+      --border-cyan: rgba(56, 189, 248, 0.45);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --accent-cyan: #38bdf8;
+      --accent-indigo: #6366f1;
+      --accent-green: #4ade80;
+      --accent-gold: #facc15;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: radial-gradient(circle at 20% 0%, #172042 0%, var(--bg-deep) 55%);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Navbar */
+    header {
+      border-bottom: 1px solid var(--border-subtle);
+      background: rgba(11, 14, 26, 0.82);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 72px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      text-decoration: none;
+      color: var(--text-primary);
+      font-weight: 700;
+      font-size: 1.15rem;
+    }
+
+    .brand img {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+    }
+
+    .badge-ver {
+      background: rgba(56, 189, 248, 0.14);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.15s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-primary);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 68px 0 48px;
+      text-align: center;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(74, 222, 128, 0.1);
+      border: 1px solid rgba(74, 222, 128, 0.35);
+      color: var(--accent-green);
+      padding: 6px 16px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.2rem, 4.5vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin-bottom: 18px;
+      background: linear-gradient(135deg, #ffffff 0%, #bae6fd 55%, #818cf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p.lead {
+      max-width: 760px;
+      margin: 0 auto 34px;
+      font-size: 1.15rem;
+      color: var(--text-secondary);
+    }
+
+    .cta-group {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 48px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 1rem;
+      text-decoration: none;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+      color: #ffffff;
+      border: 1px solid rgba(147, 197, 253, 0.45);
+      box-shadow: 0 12px 30px -8px rgba(37, 99, 235, 0.6);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 36px -6px rgba(56, 189, 248, 0.65);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-cyan);
+      transform: translateY(-2px);
+    }
+
+    .showcase-frame {
+      background: rgba(21, 25, 43, 0.75);
+      border: 1px solid var(--border-cyan);
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow: 0 28px 70px -15px rgba(0, 0, 0, 0.75), 0 0 40px rgba(56, 189, 248, 0.12);
+      max-width: 920px;
+      margin: 0 auto;
+    }
+
+    .showcase-frame img {
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+      display: block;
+    }
+
+    /* Feature Grid */
+    .section {
+      padding: 64px 0;
+    }
+
+    .section-title {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .section-sub {
+      text-align: center;
+      color: var(--text-secondary);
+      max-width: 660px;
+      margin: 0 auto 44px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 22px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 28px;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--border-cyan);
+      transform: translateY(-3px);
+    }
+
+    .card-tag {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 4px 10px;
+      border-radius: 6px;
+      margin-bottom: 14px;
+    }
+
+    .tag-cyan { background: rgba(56, 189, 248, 0.14); color: var(--accent-cyan); }
+    .tag-gold { background: rgba(250, 204, 21, 0.14); color: var(--accent-gold); }
+    .tag-green { background: rgba(74, 222, 128, 0.14); color: var(--accent-green); }
+
+    .card h3 {
+      font-size: 1.22rem;
+      margin-bottom: 10px;
+    }
+
+    .card p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    /* Banner Preview */
+    .banner-box {
+      margin-top: 24px;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .banner-box img {
+      width: 100%;
+      display: block;
+    }
+
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 36px 0;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      margin-top: 40px;
+    }
+
+    footer a {
+      color: var(--accent-cyan);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="container nav-inner">
+      <a href="#" class="brand">
+        <img src="assets/logo.png" alt="Dual Audio Synchronizer Logo" />
+        <span>Dual Audio Synchronizer</span>
+        <span class="badge-ver">v2.0</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">Engineering</a>
+        <a href="#accessibility">Hearing Clarity DSP</a>
+        <a href="https://github.com/LIN4CRE/dual-audio-synchronizer">GitHub Repo</a>
+        <a href="https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest">Releases</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div class="status-pill">● PHASE-LOCKED WASAPI ENGINE • ZERO EXTERNAL DEPENDENCIES</div>
+      <h1>Simultaneous Multi-Speaker Audio<br />with ±1 ms Active Drift Lock</h1>
+      <p class="lead">
+        Play audio through your primary headphones and secondary Bluetooth or wired speakers at the exact same time on Windows—complete with real-time clock-drift correction and built-in 2.8 kHz Vocal Clarity DSP for hard-of-hearing listeners.
+      </p>
+
+      <div class="cta-group">
+        <a class="btn btn-primary" href="https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest/download/DualAudioStudio.exe">
+          ⬇️ Download DualAudioStudio.exe (v2.0)
+        </a>
+        <a class="btn btn-secondary" href="https://github.com/LIN4CRE/dual-audio-synchronizer">
+          ★ View Source on GitHub
+        </a>
+      </div>
+
+      <div class="showcase-frame">
+        <img src="assets/screenshot.png" alt="Dual Audio Synchronizer v2.0 Studio Control Panel" />
+      </div>
+    </section>
+
+    <section id="features" class="section">
+      <h2 class="section-title">Built to Never Drift Out of Sync</h2>
+      <p class="section-sub">
+        Two Bluetooth or USB speakers each run on independent internal crystal clocks. Passive audio mirror utilities inevitably drift apart over minutes—Dual Audio Synchronizer v2.0 actively locks them together.
+      </p>
+
+      <div class="grid">
+        <div class="card">
+          <span class="card-tag tag-green">Phase Lock</span>
+          <h3>Active Clock-Drift Controller</h3>
+          <p>
+            Continuously measures secondary WASAPI hardware buffer padding via an exponential moving average pinned to <strong>10.0 ms</strong> and applies click-free ±1 frame linear-interpolated resampling whenever clocks diverge.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="card-tag tag-cyan">Low Latency</span>
+          <h3>1 ms Scheduler & Event Loopback</h3>
+          <p>
+            Combines <code>timeBeginPeriod(1)</code> high-resolution kernel scheduling with <code>AUDCLNT_STREAMFLAGS_EVENTCALLBACK</code> to eliminate Windows' default 15.6 ms timer sleep jitter.
+          </p>
+        </div>
+
+        <div class="card" id="accessibility">
+          <span class="card-tag tag-gold">Accessibility DSP</span>
+          <h3>2.8 kHz Vocal Clarity & Mono Blend</h3>
+          <p>
+            Pre-configured out of the box for hard-of-hearing listeners with a 2nd-order Biquad Peaking EQ (+3.5 dB / +5.5 dB @ 2.8 kHz), stereo-to-center vocal blend, and a soft-knee <code>tanh</code> peak limiter.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="card-tag tag-cyan">Bluetooth Resilient</span>
+          <h3>Smart Endpoint Persistence</h3>
+          <p>
+            Tracks devices by both Friendly Name and MMDevice GUID so your speakers automatically reconnect and lock back into sync even if Windows rotates Bluetooth endpoint IDs after power-cycling.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="card-tag tag-green">Fine Calibration</span>
+          <h3>Per-Speaker ±1 ms Timing & Gain</h3>
+          <p>
+            Includes dedicated <code>-5 ms</code>, <code>-1 ms</code>, <code>+1 ms</code>, and <code>+5 ms</code> micro-stepping buttons, 0%–150% independent speaker volume sliders, and a built-in acoustic Sync Test Chime.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="card-tag tag-gold">System Integration</span>
+          <h3>Single-Instance System Tray Guard</h3>
+          <p>
+            Protected by a kernel Mutex and IPC wakeup handle so duplicate instances can never clash on startup, running silently in the Windows System Tray with instant one-click restore.
+          </p>
+        </div>
+      </div>
+
+      <div class="banner-box">
+        <img src="assets/banner.png" alt="Dual Audio Synchronizer Banner" />
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>
+        <strong>Dual Audio Synchronizer v2.0</strong> • Open-Source under the MIT License • Created by <a href="https://github.com/LIN4CRE">LIN4CRE</a>
+      </p>
+    </div>
+  </footer>
+
+</body>
+</html>

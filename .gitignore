@@ -1,0 +1,8 @@
+# Build scratch / debug artifacts
+build/icon_preview.png
+*.pdb
+*.user
+*.suo
+.vs/
+Thumbs.db
+.DS_Store
