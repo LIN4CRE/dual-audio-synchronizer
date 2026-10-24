@@ -336,6 +336,14 @@ namespace DualAudioStudio {
         ExtraCrisp = 2
     }
 
+    // 0 = Stereo (L+R), 1 = Mono Sum, 2 = Left Channel Only, 3 = Right Channel Only
+    public enum SpeakerChannelMode {
+        Stereo = 0,
+        MonoSum = 1,
+        LeftOnly = 2,
+        RightOnly = 3
+    }
+
     class ElasticSyncBuffer {
         private float[] ringL;
         private float[] ringR;
@@ -396,7 +404,7 @@ namespace DualAudioStudio {
 
         // Renders outFrames into pOutput while reading inFrames consumed at the target delay offset.
         // When outFrames != inFrames (e.g. +-1 frame drift correction), uses linear interpolation so there is zero click!
-        public unsafe void RenderOutput(IntPtr pOutput, int inFrames, int outFrames, float volume, bool isMuted, ClarityPreset preset) {
+        public unsafe void RenderOutput(IntPtr pOutput, int inFrames, int outFrames, float volume, bool isMuted, ClarityPreset preset, SpeakerChannelMode channelMode = SpeakerChannelMode.Stereo) {
             if (outFrames <= 0 || pOutput == IntPtr.Zero) return;
             if (preset != lastPreset) UpdateEq(preset);
 
@@ -440,6 +448,14 @@ namespace DualAudioStudio {
                     r = ringR[a] + (ringR[b] - ringR[a]) * frac;
                 }
 
+                if (channelMode == SpeakerChannelMode.MonoSum) {
+                    l = r = (l + r) * 0.5f;
+                } else if (channelMode == SpeakerChannelMode.LeftOnly) {
+                    r = l;
+                } else if (channelMode == SpeakerChannelMode.RightOnly) {
+                    l = r;
+                }
+
                 if (applyEq) {
                     float center = (l + r) * 0.5f;
                     l = l * stereoKeep + center * monoMix;
@@ -475,6 +491,7 @@ namespace DualAudioStudio {
         public volatile int DelayMs;
         public volatile float Volume = 1.0f;
         public volatile bool IsMuted;
+        public volatile SpeakerChannelMode ChannelMode = SpeakerChannelMode.Stereo;
 
         public IMMDevice Device;
         public IAudioClient Client;
@@ -731,7 +748,7 @@ namespace DualAudioStudio {
                                                 if (isSilent || spk.IsMuted) {
                                                     spk.RenderClient.ReleaseBuffer((uint)outFrames, AUDCLNT_BUFFERFLAGS_SILENT);
                                                 } else {
-                                                    spk.SyncBuffer.RenderOutput(pRender, inFrames, outFrames, spk.Volume, spk.IsMuted, clarity);
+                                                    spk.SyncBuffer.RenderOutput(pRender, inFrames, outFrames, spk.Volume, spk.IsMuted, clarity, spk.ChannelMode);
                                                     spk.RenderClient.ReleaseBuffer((uint)outFrames, 0);
                                                 }
                                             }
@@ -1148,23 +1165,37 @@ namespace DualAudioStudio {
             }
 
             var btnGitHub = new ModernButton {
-                Text = "GitHub Repository (LIN4CRE)",
-                Size = new Size(210, 36),
+                Text = "GitHub Repo",
+                Size = new Size(134, 36),
                 Location = new Point(28, 330),
                 BaseColor = Color.FromArgb(37, 99, 235),
                 HoverColor = Color.FromArgb(59, 130, 246),
                 BorderColor = Color.FromArgb(120, 147, 197, 253),
-                Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold)
+                Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold)
             };
             btnGitHub.Click += (s, e) => {
                 try { Process.Start("https://github.com/LIN4CRE/dual-audio-synchronizer"); } catch { }
             };
 
+            var btnDonate = new ModernButton {
+                Text = "\u2615 Buy a Coffee / Smoke (PayPal)",
+                Size = new Size(204, 36),
+                Location = new Point(168, 330),
+                BaseColor = Color.FromArgb(180, 83, 9),
+                HoverColor = Color.FromArgb(217, 119, 6),
+                BorderColor = Color.FromArgb(160, 253, 224, 71),
+                ForeColor = Color.FromArgb(254, 249, 195),
+                Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold)
+            };
+            btnDonate.Click += (s, e) => {
+                try { Process.Start("https://paypal.me/dlinacre16"); } catch { }
+            };
+
             var btnClose = new ModernButton {
                 Text = "Close",
-                Size = new Size(100, 36),
-                Location = new Point(376, 330),
-                Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold)
+                Size = new Size(98, 36),
+                Location = new Point(378, 330),
+                Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold)
             };
             btnClose.Click += (s, e) => this.Close();
 
@@ -1174,6 +1205,7 @@ namespace DualAudioStudio {
             this.Controls.Add(lblDesc);
             this.Controls.Add(infoCard);
             this.Controls.Add(btnGitHub);
+            this.Controls.Add(btnDonate);
             this.Controls.Add(btnClose);
         }
     }
@@ -1506,7 +1538,7 @@ namespace DualAudioStudio {
             };
 
             chkStartup = new CheckBox {
-                Text = "Start automatically with Windows (System Tray)",
+                Text = "Start with Windows (Tray)",
                 ForeColor = Color.FromArgb(203, 213, 225),
                 AutoSize = true,
                 Location = new Point(22, 17),
@@ -1521,10 +1553,10 @@ namespace DualAudioStudio {
             };
 
             chkCloseToTray = new CheckBox {
-                Text = "Keep running in System Tray when window is closed",
+                Text = "Keep in System Tray on close",
                 ForeColor = Color.FromArgb(203, 213, 225),
                 AutoSize = true,
-                Location = new Point(345, 17),
+                Location = new Point(236, 17),
                 Checked = true,
                 Cursor = Cursors.Hand
             };
@@ -1532,11 +1564,25 @@ namespace DualAudioStudio {
                 if (!isPopulating) SaveSettings();
             };
 
+            var btnSupport = new ModernButton {
+                Text = "\u2615 Buy a Coffee / Smoke",
+                Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
+                Size = new Size(192, 34),
+                Location = new Point(488, 11),
+                BaseColor = Color.FromArgb(180, 83, 9),
+                HoverColor = Color.FromArgb(217, 119, 6),
+                BorderColor = Color.FromArgb(165, 253, 224, 71),
+                ForeColor = Color.FromArgb(254, 249, 195)
+            };
+            btnSupport.Click += (s, e) => {
+                try { Process.Start("https://paypal.me/dlinacre16"); } catch { }
+            };
+
             var btnSave = new ModernButton {
                 Text = "Save Configuration",
                 Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
-                Size = new Size(150, 34),
-                Location = new Point(686, 11),
+                Size = new Size(146, 34),
+                Location = new Point(690, 11),
                 BaseColor = Color.FromArgb(22, 163, 74),
                 HoverColor = Color.FromArgb(34, 197, 94),
                 BorderColor = Color.FromArgb(120, 134, 239, 172)
@@ -1548,6 +1594,7 @@ namespace DualAudioStudio {
 
             bottomPanel.Controls.Add(chkStartup);
             bottomPanel.Controls.Add(chkCloseToTray);
+            bottomPanel.Controls.Add(btnSupport);
             bottomPanel.Controls.Add(btnSave);
 
             // 5. Center Scrollable Speaker Cards Area
@@ -1582,6 +1629,10 @@ namespace DualAudioStudio {
                 UpdateStatusUi();
             });
             trayMenu.Items.Add("Play Sync Test Chime", null, (s, e) => PlaySyncChime());
+            trayMenu.Items.Add("-");
+            trayMenu.Items.Add("\u2615 Buy Dev a Coffee / Smoke (PayPal)", null, (s, e) => {
+                try { Process.Start("https://paypal.me/dlinacre16"); } catch { }
+            });
             trayMenu.Items.Add("-");
             trayMenu.Items.Add("Exit Dual Audio Synchronizer", null, (s, e) => {
                 trayIcon.Visible = false;
@@ -1806,6 +1857,11 @@ namespace DualAudioStudio {
                         engine.Speakers.Add(spk);
                     }
 
+                    // Universal first-run experience: if no saved speaker was matched yet, enable the first available speaker automatically
+                    if (!engine.Speakers.Exists(s => s.Enabled) && engine.Speakers.Count > 0) {
+                        engine.Speakers[0].Enabled = true;
+                    }
+
                     // Sort enabled speakers to the top so active outputs are immediately visible
                     engine.Speakers.Sort((a, b) => {
                         if (a.Enabled != b.Enabled) return b.Enabled.CompareTo(a.Enabled);
@@ -1962,7 +2018,7 @@ namespace DualAudioStudio {
 
             var btnMute = new ModernButton {
                 Text = spk.IsMuted ? "Unmute Speaker" : "Mute Speaker",
-                Size = new Size(110, 26),
+                Size = new Size(106, 26),
                 Location = new Point(576, 95),
                 Font = new Font("Segoe UI Semibold", 8.5f, FontStyle.Bold),
                 BaseColor = spk.IsMuted ? Color.FromArgb(185, 28, 28) : Color.FromArgb(40, 44, 68)
@@ -1972,6 +2028,28 @@ namespace DualAudioStudio {
                 btnMute.Text = spk.IsMuted ? "Unmute Speaker" : "Mute Speaker";
                 btnMute.BaseColor = spk.IsMuted ? Color.FromArgb(185, 28, 28) : Color.FromArgb(40, 44, 68);
                 btnMute.Invalidate();
+                SaveSettings();
+            };
+
+            Func<SpeakerChannelMode, string> getModeLabel = (m) => {
+                if (m == SpeakerChannelMode.MonoSum) return "Ch: Mono Sum";
+                if (m == SpeakerChannelMode.LeftOnly) return "Ch: Left Only";
+                if (m == SpeakerChannelMode.RightOnly) return "Ch: Right Only";
+                return "Ch: Stereo (L+R)";
+            };
+
+            var btnChannel = new ModernButton {
+                Text = getModeLabel(spk.ChannelMode),
+                Size = new Size(106, 26),
+                Location = new Point(686, 95),
+                Font = new Font("Segoe UI", 8.2f),
+                ForeColor = Color.FromArgb(186, 230, 253)
+            };
+            btnChannel.Click += (s, e) => {
+                int next = ((int)spk.ChannelMode + 1) % 4;
+                spk.ChannelMode = (SpeakerChannelMode)next;
+                btnChannel.Text = getModeLabel(spk.ChannelMode);
+                btnChannel.Invalidate();
                 SaveSettings();
             };
 
@@ -1997,6 +2075,7 @@ namespace DualAudioStudio {
             card.Controls.Add(slVol);
             card.Controls.Add(btn100);
             card.Controls.Add(btnMute);
+            card.Controls.Add(btnChannel);
 
             return card;
         }

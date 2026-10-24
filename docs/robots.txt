@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://lin4cre.github.io/dual-audio-synchronizer/sitemap.xml

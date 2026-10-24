@@ -3,13 +3,38 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dual Audio Synchronizer v2.0 — Phase-Locked Multi-Speaker Engine & Hearing Clarity Studio</title>
-  <meta name="description" content="Zero-drift WASAPI multi-speaker audio synchronizer for Windows 10/11 with automatic ±1 ms clock-drift lock and 2.8 kHz Hearing Clarity DSP." />
-  <meta property="og:title" content="Dual Audio Synchronizer v2.0" />
-  <meta property="og:description" content="Play audio simultaneously through multiple Bluetooth & wired speakers on Windows with automatic ±1 ms phase lock and Hearing Clarity DSP." />
+  <title>Dual Audio Synchronizer v2.0 — Play Audio on 2+ Speakers Simultaneously on Windows</title>
+  <meta name="description" content="Free, open-source Windows 10/11 WASAPI audio synchronizer. Play audio through multiple Bluetooth & wired speakers at the exact same time with ±1 ms drift lock and 2.8 kHz Hearing Clarity DSP." />
+  <meta name="keywords" content="dual audio windows, play audio through two speakers windows 11, bluetooth audio sync windows, multi speaker windows, hard of hearing audio enhancer, wasapi loopback sync" />
+  <meta property="og:title" content="Dual Audio Synchronizer v2.0 — Phase-Locked Multi-Speaker Engine" />
+  <meta property="og:description" content="Play audio simultaneously through multiple Bluetooth & wired speakers on Windows with automatic ±1 ms phase lock, L/R channel split, and Hearing Clarity DSP." />
   <meta property="og:image" content="https://lin4cre.github.io/dual-audio-synchronizer/assets/banner.png" />
+  <meta property="og:url" content="https://lin4cre.github.io/dual-audio-synchronizer/" />
   <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" type="image/x-icon" href="assets/app.ico" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Dual Audio Synchronizer",
+    "operatingSystem": "Windows 10, Windows 11",
+    "applicationCategory": "MultimediaApplication",
+    "softwareVersion": "2.0.0",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "description": "Zero-drift WASAPI multi-speaker audio synchronizer for Windows with automatic ±1 ms clock-drift phase lock and 2.8 kHz Hearing Clarity DSP.",
+    "downloadUrl": "https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest/download/DualAudioStudio.exe",
+    "author": {
+      "@type": "Person",
+      "name": "LIN4CRE",
+      "url": "https://github.com/LIN4CRE"
+    }
+  }
+  </script>
   <style>
     :root {
       --bg-deep: #0b0e1a;
@@ -17,6 +42,7 @@
       --bg-card-hover: #1c223a;
       --border-subtle: rgba(148, 163, 184, 0.16);
       --border-cyan: rgba(56, 189, 248, 0.45);
+      --border-amber: rgba(250, 204, 21, 0.55);
       --text-primary: #f8fafc;
       --text-secondary: #94a3b8;
       --accent-cyan: #38bdf8;
@@ -40,7 +66,7 @@
     }
 
     .container {
-      max-width: 1120px;
+      max-width: 1140px;
       margin: 0 auto;
       padding: 0 24px;
     }
@@ -48,7 +74,7 @@
     /* Navbar */
     header {
       border-bottom: 1px solid var(--border-subtle);
-      background: rgba(11, 14, 26, 0.82);
+      background: rgba(11, 14, 26, 0.85);
       backdrop-filter: blur(12px);
       position: sticky;
       top: 0;
@@ -59,7 +85,9 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 72px;
+      height: 74px;
+      gap: 16px;
+      flex-wrap: wrap;
     }
 
     .brand {
@@ -92,12 +120,13 @@
       display: flex;
       align-items: center;
       gap: 20px;
+      flex-wrap: wrap;
     }
 
     .nav-links a {
       color: var(--text-secondary);
       text-decoration: none;
-      font-size: 0.95rem;
+      font-size: 0.94rem;
       font-weight: 500;
       transition: color 0.15s ease;
     }
@@ -106,9 +135,26 @@
       color: var(--text-primary);
     }
 
+    .nav-coffee {
+      background: linear-gradient(135deg, #b45309 0%, #d97706 100%);
+      color: #fef9c3 !important;
+      border: 1px solid rgba(253, 224, 71, 0.5);
+      padding: 7px 15px;
+      border-radius: 999px;
+      font-weight: 700 !important;
+      font-size: 0.86rem !important;
+      box-shadow: 0 4px 15px rgba(217, 119, 6, 0.35);
+      transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    }
+
+    .nav-coffee:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(250, 204, 21, 0.5);
+    }
+
     /* Hero Section */
     .hero {
-      padding: 68px 0 48px;
+      padding: 64px 0 44px;
       text-align: center;
     }
 
@@ -123,7 +169,7 @@
       border-radius: 999px;
       font-size: 0.85rem;
       font-weight: 600;
-      margin-bottom: 24px;
+      margin-bottom: 22px;
     }
 
     .hero h1 {
@@ -138,8 +184,8 @@
     }
 
     .hero p.lead {
-      max-width: 760px;
-      margin: 0 auto 34px;
+      max-width: 780px;
+      margin: 0 auto 30px;
       font-size: 1.15rem;
       color: var(--text-secondary);
     }
@@ -148,19 +194,20 @@
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
-      gap: 16px;
-      margin-bottom: 48px;
+      gap: 14px;
+      margin-bottom: 24px;
     }
 
     .btn {
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      padding: 14px 28px;
+      padding: 14px 26px;
       border-radius: 12px;
       font-weight: 600;
       font-size: 1rem;
       text-decoration: none;
+      cursor: pointer;
       transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
     }
 
@@ -176,6 +223,18 @@
       box-shadow: 0 16px 36px -6px rgba(56, 189, 248, 0.65);
     }
 
+    .btn-coffee {
+      background: linear-gradient(135deg, #b45309 0%, #d97706 100%);
+      color: #fef9c3;
+      border: 1px solid rgba(253, 224, 71, 0.55);
+      box-shadow: 0 12px 28px -8px rgba(217, 119, 6, 0.55);
+    }
+
+    .btn-coffee:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 34px -6px rgba(250, 204, 21, 0.65);
+    }
+
     .btn-secondary {
       background: var(--bg-card);
       color: var(--text-primary);
@@ -186,6 +245,45 @@
       background: var(--bg-card-hover);
       border-color: var(--border-cyan);
       transform: translateY(-2px);
+    }
+
+    /* One-liner PowerShell box */
+    .ps-box {
+      max-width: 700px;
+      margin: 0 auto 44px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 10px 14px 10px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.9rem;
+      color: #bae6fd;
+    }
+
+    .ps-box code {
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+
+    .copy-btn {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover {
+      background: rgba(56, 189, 248, 0.25);
     }
 
     .showcase-frame {
@@ -207,7 +305,7 @@
 
     /* Feature Grid */
     .section {
-      padding: 64px 0;
+      padding: 60px 0;
     }
 
     .section-title {
@@ -220,8 +318,8 @@
     .section-sub {
       text-align: center;
       color: var(--text-secondary);
-      max-width: 660px;
-      margin: 0 auto 44px;
+      max-width: 680px;
+      margin: 0 auto 42px;
     }
 
     .grid {
@@ -268,17 +366,64 @@
       font-size: 0.95rem;
     }
 
-    /* Banner Preview */
-    .banner-box {
-      margin-top: 24px;
-      border-radius: 16px;
-      overflow: hidden;
+    /* Comparison Table */
+    .table-wrap {
+      overflow-x: auto;
+      background: var(--bg-card);
       border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      margin-top: 20px;
     }
 
-    .banner-box img {
+    table {
       width: 100%;
-      display: block;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    th {
+      background: rgba(15, 23, 42, 0.6);
+      font-size: 0.92rem;
+      color: #e2e8f0;
+    }
+
+    td {
+      font-size: 0.94rem;
+      color: var(--text-secondary);
+    }
+
+    td.highlight {
+      color: var(--accent-green);
+      font-weight: 600;
+    }
+
+    /* Support Card */
+    .support-card {
+      margin-top: 48px;
+      background: linear-gradient(135deg, rgba(180, 83, 9, 0.22) 0%, rgba(30, 41, 59, 0.85) 100%);
+      border: 1px solid var(--border-amber);
+      border-radius: 20px;
+      padding: 40px 32px;
+      text-align: center;
+      box-shadow: 0 20px 50px -15px rgba(217, 119, 6, 0.25);
+    }
+
+    .support-card h2 {
+      font-size: 1.85rem;
+      margin-bottom: 12px;
+      color: #fef08a;
+    }
+
+    .support-card p {
+      max-width: 640px;
+      margin: 0 auto 26px;
+      color: #e2e8f0;
+      font-size: 1.05rem;
     }
 
     footer {
@@ -307,28 +452,38 @@
       </a>
       <nav class="nav-links">
         <a href="#features">Engineering</a>
-        <a href="#accessibility">Hearing Clarity DSP</a>
+        <a href="#comparison">Comparison</a>
         <a href="https://github.com/LIN4CRE/dual-audio-synchronizer">GitHub Repo</a>
-        <a href="https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest">Releases</a>
+        <a href="https://paypal.me/dlinacre16" target="_blank" rel="noopener" class="nav-coffee">☕🚬 Buy Me a Coffee / Smoke</a>
       </nav>
     </div>
   </header>
 
   <main class="container">
     <section class="hero">
-      <div class="status-pill">● PHASE-LOCKED WASAPI ENGINE • ZERO EXTERNAL DEPENDENCIES</div>
+      <div class="status-pill">● PHASE-LOCKED WASAPI ENGINE • 100% FREE &amp; OPEN-SOURCE</div>
       <h1>Simultaneous Multi-Speaker Audio<br />with ±1 ms Active Drift Lock</h1>
       <p class="lead">
-        Play audio through your primary headphones and secondary Bluetooth or wired speakers at the exact same time on Windows—complete with real-time clock-drift correction and built-in 2.8 kHz Vocal Clarity DSP for hard-of-hearing listeners.
+        Play audio through your primary headphones and secondary Bluetooth or wired speakers at the exact same time on Windows—complete with real-time clock-drift correction, Left/Right stereo splitting, and built-in 2.8 kHz Vocal Clarity DSP for hard-of-hearing listeners.
       </p>
 
       <div class="cta-group">
         <a class="btn btn-primary" href="https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest/download/DualAudioStudio.exe">
           ⬇️ Download DualAudioStudio.exe (v2.0)
         </a>
-        <a class="btn btn-secondary" href="https://github.com/LIN4CRE/dual-audio-synchronizer">
-          ★ View Source on GitHub
+        <a class="btn btn-coffee" href="https://paypal.me/dlinacre16" target="_blank" rel="noopener">
+          ☕🚬 Buy Me a Coffee or a Smoke (PayPal)
         </a>
+        <a class="btn btn-secondary" href="https://github.com/LIN4CRE/dual-audio-synchronizer">
+          ★ Star on GitHub
+        </a>
+      </div>
+
+      <div class="ps-box" title="Run in Windows PowerShell to install with Desktop & Startup shortcuts">
+        <code id="psCmd">irm https://lin4cre.github.io/dual-audio-synchronizer/install.ps1 | iex</code>
+        <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('psCmd').innerText); this.innerText='✔ Copied!'; setTimeout(()=>this.innerText='Copy PowerShell Install', 2000);">
+          Copy PowerShell Install
+        </button>
       </div>
 
       <div class="showcase-frame">
@@ -351,24 +506,32 @@
           </p>
         </div>
 
-        <div class="card">
-          <span class="card-tag tag-cyan">Low Latency</span>
-          <h3>1 ms Scheduler & Event Loopback</h3>
-          <p>
-            Combines <code>timeBeginPeriod(1)</code> high-resolution kernel scheduling with <code>AUDCLNT_STREAMFLAGS_EVENTCALLBACK</code> to eliminate Windows' default 15.6 ms timer sleep jitter.
-          </p>
-        </div>
-
         <div class="card" id="accessibility">
           <span class="card-tag tag-gold">Accessibility DSP</span>
-          <h3>2.8 kHz Vocal Clarity & Mono Blend</h3>
+          <h3>2.8 kHz Vocal Clarity &amp; Mono Blend</h3>
           <p>
             Pre-configured out of the box for hard-of-hearing listeners with a 2nd-order Biquad Peaking EQ (+3.5 dB / +5.5 dB @ 2.8 kHz), stereo-to-center vocal blend, and a soft-knee <code>tanh</code> peak limiter.
           </p>
         </div>
 
         <div class="card">
-          <span class="card-tag tag-cyan">Bluetooth Resilient</span>
+          <span class="card-tag tag-cyan">Stereo Split</span>
+          <h3>Per-Speaker L / R Channel Routing</h3>
+          <p>
+            Use each speaker card's 1-click <code>Ch: Stereo</code> / <code>Mono Sum</code> / <code>Left Only</code> / <code>Right Only</code> selector to turn any two independent Bluetooth speakers into a true Left/Right stereo pair.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="card-tag tag-cyan">Low Latency</span>
+          <h3>1 ms Scheduler &amp; Event Loopback</h3>
+          <p>
+            Combines <code>timeBeginPeriod(1)</code> high-resolution kernel scheduling with <code>AUDCLNT_STREAMFLAGS_EVENTCALLBACK</code> to eliminate Windows' default 15.6 ms timer sleep jitter.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="card-tag tag-green">Bluetooth Resilient</span>
           <h3>Smart Endpoint Persistence</h3>
           <p>
             Tracks devices by both Friendly Name and MMDevice GUID so your speakers automatically reconnect and lock back into sync even if Windows rotates Bluetooth endpoint IDs after power-cycling.
@@ -376,24 +539,74 @@
         </div>
 
         <div class="card">
-          <span class="card-tag tag-green">Fine Calibration</span>
-          <h3>Per-Speaker ±1 ms Timing & Gain</h3>
+          <span class="card-tag tag-gold">Zero Bloat</span>
+          <h3>~360 KB Standalone Executable</h3>
           <p>
-            Includes dedicated <code>-5 ms</code>, <code>-1 ms</code>, <code>+1 ms</code>, and <code>+5 ms</code> micro-stepping buttons, 0%–150% independent speaker volume sliders, and a built-in acoustic Sync Test Chime.
-          </p>
-        </div>
-
-        <div class="card">
-          <span class="card-tag tag-gold">System Integration</span>
-          <h3>Single-Instance System Tray Guard</h3>
-          <p>
-            Protected by a kernel Mutex and IPC wakeup handle so duplicate instances can never clash on startup, running silently in the Windows System Tray with instant one-click restore.
+            No virtual audio cable drivers, no reboots, and no background bloatware. Protected by a single-instance kernel Mutex and runs quietly in your Windows System Tray.
           </p>
         </div>
       </div>
+    </section>
 
-      <div class="banner-box">
-        <img src="assets/banner.png" alt="Dual Audio Synchronizer Banner" />
+    <section id="comparison" class="section">
+      <h2 class="section-title">Why People Switch to Dual Audio Synchronizer</h2>
+      <p class="section-sub">
+        Compare Dual Audio Synchronizer v2.0 against standard Windows workarounds.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Capability</th>
+              <th>Dual Audio Synchronizer v2.0</th>
+              <th>Windows "Stereo Mix"</th>
+              <th>Voicemeeter / Virtual Cables</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Setup Experience</strong></td>
+              <td class="highlight">✔ Instant (Works out of the box)</td>
+              <td>Requires hidden driver settings</td>
+              <td>Complex virtual bus routing &amp; reboot</td>
+            </tr>
+            <tr>
+              <td><strong>Active Bluetooth Drift Correction</strong></td>
+              <td class="highlight">✔ Continuous ±1 ms Phase Lock</td>
+              <td>✖ Drifts out of sync over time</td>
+              <td>✖ Requires manual engine restarts</td>
+            </tr>
+            <tr>
+              <td><strong>2.8 kHz Speech Clarity EQ (Hard of Hearing)</strong></td>
+              <td class="highlight">✔ Built-in &amp; Pre-Configured</td>
+              <td>✖ None</td>
+              <td>Manual parametric EQ configuration</td>
+            </tr>
+            <tr>
+              <td><strong>Left / Right Dual-Speaker Stereo Split</strong></td>
+              <td class="highlight">✔ 1-Click per Speaker Card</td>
+              <td>✖ Stereo only</td>
+              <td>Complex matrix configuration</td>
+            </tr>
+            <tr>
+              <td><strong>Extra Kernel Drivers Required</strong></td>
+              <td class="highlight">✔ Zero (Standalone ~360 KB .exe)</td>
+              <td>None</td>
+              <td>Requires virtual audio driver install</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="support-card">
+        <h2>☕🚬 Enjoying Dual Audio Synchronizer?</h2>
+        <p>
+          This project is 100% free, open-source, and built with care so everyone can enjoy zero-drift multi-speaker audio and crystal-clear dialogue on Windows. If it helped you out, buy me a coffee or a smoke on PayPal!
+        </p>
+        <a class="btn btn-coffee" href="https://paypal.me/dlinacre16" target="_blank" rel="noopener">
+          ☕🚬 Buy Me a Coffee or a Smoke (paypal.me/dlinacre16)
+        </a>
       </div>
     </section>
   </main>
@@ -401,7 +614,7 @@
   <footer>
     <div class="container">
       <p>
-        <strong>Dual Audio Synchronizer v2.0</strong> • Open-Source under the MIT License • Created by <a href="https://github.com/LIN4CRE">LIN4CRE</a>
+        <strong>Dual Audio Synchronizer v2.0</strong> • Open-Source under the MIT License • Created by <a href="https://github.com/LIN4CRE">LIN4CRE</a> • <a href="https://paypal.me/dlinacre16" target="_blank" rel="noopener">Support via PayPal</a>
       </p>
     </div>
   </footer>

@@ -9,31 +9,65 @@
 
 [![Release](https://img.shields.io/badge/Release-v2.0.0-38bdf8?style=for-the-badge&logo=github)](https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest)
 [![Live Site](https://img.shields.io/badge/Live_Web_Portal-GitHub_Pages-4ade80?style=for-the-badge&logo=googlechrome&logoColor=white)](https://lin4cre.github.io/dual-audio-synchronizer/)
+[![Buy Me a Coffee or a Smoke](https://img.shields.io/badge/%E2%98%95%F0%9F%9A%AC_Buy_Me_a_Coffee_%2F_Smoke-PayPal-f59e0b?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/dlinacre16)
 [![Platform](https://img.shields.io/badge/Platform-Windows_10_%2F_11_(x64)-6366f1?style=for-the-badge&logo=windows)](https://github.com/LIN4CRE/dual-audio-synchronizer)
-[![Engine](https://img.shields.io/badge/Audio_Engine-WASAPI_Event_Loopback-facc15?style=for-the-badge)](https://github.com/LIN4CRE/dual-audio-synchronizer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-94a3b8?style=for-the-badge)](LICENSE)
 
 <p align="center">
-  <a href="https://lin4cre.github.io/dual-audio-synchronizer/"><strong>🌐 Live Deployment & Web Portal</strong></a> •
-  <a href="https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest"><strong>⬇️ Download DualAudioStudio.exe</strong></a> •
-  <a href="#-key-engineering-highlights"><strong>⚡ Architecture</strong></a> •
-  <a href="#-hearing-clarity--dialogue-enhancement-dsp"><strong>🎧 Accessibility DSP</strong></a>
+  <a href="https://lin4cre.github.io/dual-audio-synchronizer/"><strong>🌐 Live Website</strong></a> •
+  <a href="https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest/download/DualAudioStudio.exe"><strong>⬇️ Direct Download (.exe)</strong></a> •
+  <a href="#-instant-1-line-install-or-portable-download"><strong>⚡ 1-Line Install</strong></a> •
+  <a href="#-how-it-compares"><strong>📊 Comparison</strong></a> •
+  <a href="https://paypal.me/dlinacre16"><strong>☕🚬 Buy Me a Coffee / Smoke</strong></a>
 </p>
 
 </div>
 
 ---
 
-## 🎯 Overview
+## 🎯 Why People Use Dual Audio Synchronizer
 
-**Dual Audio Synchronizer** is a zero-dependency, studio-grade Windows audio mirroring engine that broadcasts your primary system output simultaneously to one or more secondary speakers (Bluetooth headphones/speakers, studio monitors, optical SPDIF, or HDMI/DisplayPort audio) with **automatic $\pm 1\text{ ms}$ clock-drift correction** and built-in **Hearing Clarity DSP**.
+Windows only lets you play audio through **one** output device at a time—and built-in workarounds like *Windows Stereo Mix* or virtual audio cables suffer from severe Bluetooth clock drift, hollow phasing echoes, and complicated setup.
 
-Unlike standard stereo-mix workarounds or passive loopback copiers—which slowly drift out of phase over time due to independent crystal oscillators on Bluetooth and USB DACs—**Dual Audio Synchronizer v2.0** continuously monitors the hardware render queue depth of every secondary device and applies click-free, linear-interpolated micro-rate adjustments to keep all speakers locked in phase indefinitely.
+**Dual Audio Synchronizer** solves this in a single lightweight (`~360 KB`), zero-dependency executable:
+
+* 🎧 **Hard-of-Hearing & Accessibility Listening**: Play TV/movie/PC audio through your desk speakers *and* close-range Bluetooth headphones/neckbands simultaneously, enhanced by a built-in **$2.8\text{ kHz}$ Vocal Clarity Biquad EQ + Center Dialogue Blend** that makes speech consonants crystal-clear.
+* 🎬 **Couples & Friends Sharing 2 Bluetooth Headphones**: Watch movies or listen to music together on two separate pairs of wireless headphones locked in phase within $\pm 1\text{ ms}$.
+* 🔊 **True Left / Right Dual-Speaker Stereo Split**: Use the per-speaker **`Ch: Left Only`** and **`Ch: Right Only`** routing button to turn any two independent Bluetooth or wired speakers into a dedicated wide-stage Left/Right stereo pair.
+* 🎮 **Gaming Headset + Subwoofer / Desk Monitors**: Feel bass through your room speakers while wearing your primary wireless headset.
 
 <div align="center">
   <img src="assets/screenshot.png" alt="Dual Audio Synchronizer v2.0 Studio Control Panel" width="880" />
-  <p><em>Dual Audio Synchronizer v2.0 Studio Control Panel — Phase-locked mirroring between SK100 & EDIFIER R1280DBs with Balanced Vocal Clarity DSP active.</em></p>
+  <p><em>Dual Audio Synchronizer v2.0 Studio Control Panel — Phase-locked mirroring between SK100 & EDIFIER R1280DBs with Balanced Vocal Clarity DSP, per-speaker Channel Routing, and 1-click PayPal support button.</em></p>
 </div>
+
+---
+
+## 🚀 Instant 1-Line Install (or Portable Download)
+
+### Option A: 1-Line PowerShell Installer (Creates Desktop & Startup Shortcuts)
+Open **PowerShell** and paste this single command:
+
+```powershell
+irm https://lin4cre.github.io/dual-audio-synchronizer/install.ps1 | iex
+```
+
+### Option B: Direct Portable Executable (Zero Install Needed)
+1. Download **[`DualAudioStudio.exe`](https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest/download/DualAudioStudio.exe)** from the [Latest Release](https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest).
+2. Double-click `DualAudioStudio.exe`. It runs immediately on any Windows 10 or Windows 11 PC with **zero external runtimes or virtual audio drivers required**.
+
+---
+
+## 📊 How It Compares
+
+| Feature | **Dual Audio Synchronizer v2.0** | Windows "Stereo Mix" | Voicemeeter / Virtual Cables |
+| :--- | :---: | :---: | :---: |
+| **Setup Time** | **Instant (0 config needed)** | Requires hidden driver tweaks | Complex virtual routing & reboot |
+| **Active Clock-Drift Correction** | **✅ Yes ($\pm 1\text{ ms}$ continuous phase lock)** | ❌ No (drifts out of sync over time) | ❌ Manual buffer resets required |
+| **Built-in $2.8\text{ kHz}$ Speech Clarity DSP** | **✅ Yes (Biquad EQ + Center Blend)** | ❌ No | ⚠️ Manual parametric EQ setup |
+| **Per-Speaker Channel Split (`L` / `R` / `Mono`)** | **✅ 1-Click per speaker** | ❌ No | ⚠️ Complex bus routing |
+| **Survives Bluetooth Reconnects** | **✅ Automatic GUID + Name matching** | ❌ Drops connection | ❌ Requires manual engine restart |
+| **Extra Kernel Drivers Required** | **✅ None (`~360 KB` standalone `.exe`)** | None | Requires virtual audio drivers |
 
 ---
 
@@ -43,9 +77,9 @@ Unlike standard stereo-mix workarounds or passive loopback copiers—which slowl
 | :--- | :--- | :--- |
 | **Active Clock-Drift Lock** | Continuous exponential moving average (EMA) tracking of WASAPI `GetCurrentPadding()` pinned to a `10.0 ms` target window with $\pm 1\text{ frame}$ linear-interpolated resampling (`ElasticSyncBuffer`). | Eliminates the "phasing / hollow echo" and periodic desynchronization that happens when two Bluetooth speakers run on independent hardware clocks. |
 | **1 ms Kernel Timer & Event Loopback** | Calls `winmm.dll` `timeBeginPeriod(1)` on a `ThreadPriority.Highest` real-time worker paired with `AUDCLNT_STREAMFLAGS_EVENTCALLBACK`. | Removes Windows' default `15.6 ms` thread sleep quantum jitter for rock-solid sub-millisecond packet delivery. |
-| **Hearing Clarity Studio DSP** | Cascaded 2nd-order Biquad Peaking EQ centered at $2.8\text{ kHz}$ ($Q = 1.15$, $+3.5\text{ dB}$ or $+5.5\text{ dB}$) + Stereo-to-Center Mono Vocal Blend + Soft-Knee $\tanh$ Limiter. | Specifically tuned for hard-of-hearing listeners: sharpens speech consonants (*s, t, k, th*) and anchors vocals across both speakers without digital clipping. |
+| **Hearing Clarity Studio DSP** | Cascaded 2nd-order Biquad Peaking EQ centered at $2.8\text{ kHz}$ ($Q = 0.95$, $+3.5\text{ dB}$ or $+5.5\text{ dB}$) + Stereo-to-Center Mono Vocal Blend + Soft-Knee $\tanh$ Limiter. | Specifically tuned for hard-of-hearing listeners: sharpens speech consonants (*s, t, k, th*) and anchors vocals across both speakers without digital clipping. |
+| **Per-Speaker Channel Routing** | Real-time matrix router supporting `Stereo (L+R)`, `Mono Sum`, `Left Only`, and `Right Only` per secondary speaker. | Lets you combine any two speakers into a dedicated Left/Right stereo pair or full mono/stereo mirror. |
 | **Smart Bluetooth GUID Persistence** | Matches audio endpoints by **both** Windows MMDevice GUID and Friendly Name, while automatically filtering out low-bitrate `Hands-Free AG` telephony profiles. | Survives Bluetooth power-cycling and Windows endpoint GUID rotation automatically without losing your speaker configuration. |
-| **Single-Instance & System Tray Guard** | Named OS `Mutex` (`Local\DualAudioSynchronizer_SingleInstance_v2`) + IPC `EventWaitHandle` wakeup signal. | Prevents duplicate background processes from competing for the same audio buffer and wakes the existing Studio window when launched from the Desktop shortcut. |
 
 ---
 
@@ -70,10 +104,11 @@ Unlike standard stereo-mix workarounds or passive loopback copiers—which slowl
                                       │
                                       ▼
 ┌────────────────────────────────────────────────────────────────────────────┐
-│                   HEARING CLARITY & DIALOGUE DSP PIPELINE                  │
-│   1. Center Vocal Mono Blend (50% Balanced / 70% Extra Crisp)              │
-│   2. 2.8 kHz Biquad Peaking EQ (+3.5 dB / +5.5 dB Consonant Articulation)  │
-│   3. Per-Speaker Gain Stage (0% – 150%) + Soft-Knee Tanh Peak Limiter      │
+│              CHANNEL ROUTER & HEARING CLARITY DSP PIPELINE                 │
+│   1. Channel Matrix: Stereo (L+R) / Mono Sum / Left Only / Right Only      │
+│   2. Center Vocal Mono Blend (50% Balanced / 65% Extra Crisp)              │
+│   3. 2.8 kHz Biquad Peaking EQ (+3.5 dB / +5.5 dB Consonant Articulation)  │
+│   4. Per-Speaker Gain Stage (0% – 150%) + Soft-Knee Tanh Peak Limiter      │
 └─────────────────────────────────────┬──────────────────────────────────────┘
                                       │
                                       ▼
@@ -85,28 +120,9 @@ Unlike standard stereo-mix workarounds or passive loopback copiers—which slowl
 
 ---
 
-## 🎧 Hearing Clarity & Dialogue Enhancement (DSP)
+## 🛠️ Build from Source
 
-Designed with accessibility first, **Dual Audio Synchronizer v2.0** boots with **Balanced Vocal Clarity** pre-configured out of the box so hard-of-hearing users never need to fiddle with complex equalizers:
-
-1. **Balanced Vocal Clarity (`+3.5 dB @ 2.8 kHz + 50% Mono Blend`) *(Default / Recommended)***
-   - Boosts the critical $2\text{ kHz} - 4\text{ kHz}$ human speech intelligibility band where consonant definition lives, while blending left/right stereo channels by $50\%$ so dialogue remains anchored evenly across both speakers regardless of where you sit in the room.
-2. **Extra Crisp Speech (`+5.5 dB @ 2.8 kHz + 70% Strong Center Focus`)**
-   - Maximum vocal articulation for quiet dialogue tracks, podcasts, lectures, and television streams, protected by a transparent soft-knee $\tanh$ limiter above `-0.17 dBFS`.
-3. **Flat Studio Pass-Through (`No EQ / Original Stereo`)**
-   - Bit-transparent stereo pass-through with zero frequency shaping.
-
----
-
-## 🚀 Quick Start
-
-### Option 1: Download Prebuilt Binary (Recommended)
-1. Download **[`DualAudioStudio.exe`](https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest)** from the latest GitHub Release (or directly from [`build/DualAudioStudio.exe`](build/DualAudioStudio.exe)).
-2. Run `DualAudioStudio.exe`. It requires **zero external runtime installations** (uses native Windows `.NET Framework 4.x` + `WASAPI` COM interop built into every Windows 10/11 PC).
-3. Your primary output is automatically detected, and secondary speakers can be toggled **ON/OFF**, volume-leveled (`0% – 150%`), or fine-tuned with $\pm 1\text{ ms}$ / $\pm 5\text{ ms}$ timing buttons.
-
-### Option 2: Build from Source
-No Visual Studio installation is required. Run the included PowerShell build script to regenerate all high-DPI vector icons/logos and compile `DualAudioStudio.exe` using the built-in Windows .NET compiler:
+No Visual Studio installation is required. Run [`build.ps1`](build.ps1) to generate all high-DPI vector icons/logos and compile `DualAudioStudio.exe` using the built-in Windows .NET Framework compiler:
 
 ```powershell
 git clone https://github.com/LIN4CRE/dual-audio-synchronizer.git
@@ -116,29 +132,19 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 ---
 
-## 📁 Repository Structure
+## ☕🚬 Support the Developer (Buy Me a Coffee or a Smoke!)
 
-```text
-dual-audio-synchronizer/
-├── assets/
-│   ├── app.ico              # Multi-resolution (16px–256px) 32-bit ARGB Windows icon
-│   ├── banner.png           # 1280×640 GitHub repository & social hero banner
-│   ├── logo.png             # 512×512 high-DPI transparent studio emblem
-│   └── screenshot.png       # Live capture of the v2.0 Studio Control Panel
-├── build/
-│   └── DualAudioStudio.exe  # Compiled standalone Windows executable
-├── docs/
-│   ├── index.html           # Live public GitHub Pages web portal
-│   └── assets/              # Web portal visual assets
-├── src/
-│   ├── DualAudioStudio.cs   # Complete WASAPI engine, DSP pipeline & dark-mode WinForms Studio UI
-│   └── app.ico              # Embedded Win32 resource icon
-├── tools/
-│   └── GenerateAssets.cs    # Programmatic GDI+ vector generator for all icons, logos & banners
-├── build.ps1                # One-step asset generator & compiler script
-├── LICENSE                  # MIT License
-└── README.md                # Project documentation
-```
+**Dual Audio Synchronizer** is 100% free, open-source, ad-free, and built with care to make multi-speaker audio and hearing clarity effortless on Windows.
+
+If this app saved you from audio headaches or helped you hear movies, music, and dialogue clearly across your speakers, consider buying me a coffee or a smoke via PayPal!
+
+<div align="center">
+
+[![Buy Me a Coffee or a Smoke via PayPal](https://img.shields.io/badge/%E2%98%95%F0%9F%9A%AC_Buy_Me_a_Coffee_or_a_Smoke-paypal.me%2Fdlinacre16-f59e0b?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/dlinacre16)
+
+**👉 [https://paypal.me/dlinacre16](https://paypal.me/dlinacre16)**
+
+</div>
 
 ---
 
