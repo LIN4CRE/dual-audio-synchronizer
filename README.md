@@ -32,14 +32,34 @@ Windows only lets you play audio through **one** output device at a time—and b
 **Dual Audio Synchronizer** solves this in a single lightweight (`~360 KB`), zero-dependency executable:
 
 * 🎧 **Hard-of-Hearing & Accessibility Listening**: Play TV/movie/PC audio through your desk speakers *and* close-range Bluetooth headphones/neckbands simultaneously, enhanced by a built-in **$2.8\text{ kHz}$ Vocal Clarity Biquad EQ + Center Dialogue Blend** that makes speech consonants crystal-clear.
+* ✨ **Fullscreen Hypnotic Trance Visualizer**: Launch the built-in 60 FPS beat-reactive psychedelic visualizer (`✨ Trance Visualizer` button or `F11` for fullscreen)—inspired by **MilkDrop / projectM**, **Sacred Kaleidoscope Mandalas**, and **Shadertoy** warp tunnels—driven by a real-time 512-point Hann-windowed Cooley-Tukey FFT and adaptive spectral-flux beat detector.
 * 🎬 **Couples & Friends Sharing 2 Bluetooth Headphones**: Watch movies or listen to music together on two separate pairs of wireless headphones locked in phase within $\pm 1\text{ ms}$.
 * 🔊 **True Left / Right Dual-Speaker Stereo Split**: Use the per-speaker **`Ch: Left Only`** and **`Ch: Right Only`** routing button to turn any two independent Bluetooth or wired speakers into a dedicated wide-stage Left/Right stereo pair.
 * 🎮 **Gaming Headset + Subwoofer / Desk Monitors**: Feel bass through your room speakers while wearing your primary wireless headset.
 
 <div align="center">
   <img src="assets/screenshot.png" alt="Dual Audio Synchronizer v2.0 Studio Control Panel" width="880" />
-  <p><em>Dual Audio Synchronizer v2.0 Studio Control Panel — Phase-locked mirroring between SK100 & EDIFIER R1280DBs with Balanced Vocal Clarity DSP, per-speaker Channel Routing, and 1-click PayPal support button.</em></p>
+  <p><em>Dual Audio Synchronizer v2.0 Studio Control Panel — Phase-locked mirroring between SK100 & EDIFIER R1280DBs with 4-Pt Cubic Hermite Sync, Balanced Vocal Clarity DSP, per-speaker Channel Routing, Trance Visualizer launcher, and 1-click PayPal support button.</em></p>
 </div>
+
+---
+
+## ✨ Fullscreen Hypnotic Trance Visualizer (MilkDrop / Sacred Kaleidoscope Inspired)
+
+Click **`✨ Trance Visualizer`** in the studio header (or right-click the System Tray icon) to launch the real-time 60 FPS beat-reactive visualizer—and press **`F11`**, **`F`**, **`Enter`**, or **Double-Click** anywhere to go borderless fullscreen:
+
+<div align="center">
+  <img src="assets/visualizer.png" alt="Dual Audio Synchronizer Fullscreen Hypnotic Trance Visualizer" width="880" />
+  <p><em>60 FPS Hypnotic Trance Visualizer — Driven by a 512-point Radix-2 Cooley-Tukey FFT, 64 logarithmic perceptual frequency bands, adaptive spectral-flux beat detection, and phosphor motion-blur feedback trails.</em></p>
+</div>
+
+* **5 Hypnotic Visual Engines (`Space` to cycle)**:
+  1. **Auto-Morph Odyssey (MilkDrop Style)**: Blends harmonic warp tunnels, 12-fold sacred kaleidoscope geometry, and stereo Lissajous ribbons while morphing symmetries on every 8th beat.
+  2. **Cyber-Vortex Warp Tunnel**: 36 concentric frequency-warped harmonic polygons zooming endlessly toward the viewer with beat-triggered shockwaves.
+  3. **Sacred Kaleidoscope Mandala**: 8/12/16-fold dihedral mirror reflections + **137.5° Golden-Angle Phyllotaxis** sacred spiral seeds pulsing to sub-bass and vocal mids.
+  4. **Liquid Aurora & 4D Stereo Lissajous Core**: Multi-curtain harmonic aurora waves paired with a true Left/Right stereo phase Lissajous core.
+  5. **Wormhole Hyperdrive**: 260 3D perspective star-streaks + 64-band polar logarithmic equalizer + central bass supernova.
+* **5 Psychedelic Color Palettes (`C` to cycle)** & **4 Beat Drive Sensitivities (`V` to cycle)**, with an auto-hiding HUD and cursor after 2.8 seconds in fullscreen.
 
 ---
 

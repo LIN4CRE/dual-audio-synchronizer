@@ -517,6 +517,196 @@ namespace DualAudioStudio {
         public volatile int DriftCorrections;
     }
 
+    #region Real-Time FFT, Spectral Flux Beat Detector & Trance Audio Analyzer
+    public class VisualizerDspEngine {
+        private const int FftSize = 512;
+        private readonly float[] ringL = new float[FftSize];
+        private readonly float[] ringR = new float[FftSize];
+        private readonly float[] hannWindow = new float[FftSize];
+        private readonly float[] fftReal = new float[FftSize];
+        private readonly float[] fftImag = new float[FftSize];
+        private int writePos = 0;
+        private readonly object dspLock = new object();
+
+        public readonly float[] Spectrum = new float[64];
+        public readonly float[] WaveL = new float[256];
+        public readonly float[] WaveR = new float[256];
+
+        public volatile float SubBass = 0f;
+        public volatile float LowMid = 0f;
+        public volatile float VocalMid = 0f;
+        public volatile float HighTreble = 0f;
+        public volatile float BeatPulse = 0f;
+        public volatile int BeatCount = 0;
+        public volatile float EstimatedBpm = 124f;
+        public volatile float Sensitivity = 1.2f;
+        public volatile bool IsReceivingAudio = false;
+
+        private float avgBassEnergy = 0.05f;
+        private long lastBeatTickMs = 0;
+        private long lastAudioPacketMs = 0;
+        private readonly Stopwatch clock = Stopwatch.StartNew();
+
+        public VisualizerDspEngine() {
+            for (int i = 0; i < FftSize; i++) {
+                hannWindow[i] = 0.5f * (1.0f - (float)Math.Cos(2.0 * Math.PI * i / (FftSize - 1)));
+            }
+        }
+
+        public unsafe void PushSamples(IntPtr pData, int frames, int channels, bool isSilent) {
+            if (isSilent || pData == IntPtr.Zero || frames <= 0) return;
+            float* p = (float*)pData;
+            float peak = 0f;
+            lock (dspLock) {
+                int step = Math.Max(1, frames / 256);
+                for (int i = 0; i < frames; i += step) {
+                    float l = p[i * channels];
+                    float r = (channels >= 2) ? p[i * channels + 1] : l;
+                    float mag = Math.Abs(l) + Math.Abs(r);
+                    if (mag > peak) peak = mag;
+                    ringL[writePos] = l;
+                    ringR[writePos] = r;
+                    writePos = (writePos + 1) & (FftSize - 1);
+                }
+            }
+            if (peak > 0.002f) {
+                lastAudioPacketMs = clock.ElapsedMilliseconds;
+            }
+        }
+
+        public void UpdateFrame() {
+            long nowMs = clock.ElapsedMilliseconds;
+            bool activeAudio = (nowMs - lastAudioPacketMs) < 450;
+            IsReceivingAudio = activeAudio;
+            float sens = Sensitivity;
+
+            if (activeAudio) {
+                lock (dspLock) {
+                    int rp = writePos;
+                    for (int i = 0; i < FftSize; i++) {
+                        int idx = (rp + i) & (FftSize - 1);
+                        float mono = (ringL[idx] + ringR[idx]) * 0.5f;
+                        fftReal[i] = mono * hannWindow[i];
+                        fftImag[i] = 0f;
+                        if ((i & 1) == 0) {
+                            int wIdx = i >> 1;
+                            WaveL[wIdx] = WaveL[wIdx] * 0.45f + ringL[idx] * 0.55f * sens;
+                            WaveR[wIdx] = WaveR[wIdx] * 0.45f + ringR[idx] * 0.55f * sens;
+                        }
+                    }
+                }
+
+                ComputeRadix2Fft(fftReal, fftImag, FftSize);
+
+                // Map 256 FFT bins into 64 perceptual logarithmic bars
+                for (int b = 0; b < 64; b++) {
+                    double t0 = Math.Pow(b / 64.0, 1.85);
+                    double t1 = Math.Pow((b + 1) / 64.0, 1.85);
+                    int i0 = Math.Max(1, (int)(t0 * 220));
+                    int i1 = Math.Max(i0 + 1, Math.Min(255, (int)(t1 * 220) + 1));
+                    float sum = 0f;
+                    for (int k = i0; k < i1; k++) {
+                        float re = fftReal[k];
+                        float im = fftImag[k];
+                        sum += (float)Math.Sqrt(re * re + im * im);
+                    }
+                    float avg = sum / Math.Max(1, i1 - i0);
+                    // Perceptual high-frequency tilt compensation
+                    float boost = (1.1f + b * 0.085f) * 0.065f * sens;
+                    float target = Math.Min(1.6f, avg * boost);
+                    if (target > Spectrum[b]) {
+                        Spectrum[b] = Spectrum[b] * 0.42f + target * 0.58f;
+                    } else {
+                        Spectrum[b] = Spectrum[b] * 0.84f + target * 0.16f;
+                    }
+                }
+            } else {
+                // Hypnotic 124 BPM Trance Synth Fallback during silence so visualizer is always alive
+                double t = nowMs * 0.001;
+                double beatPhase = (t * (124.0 / 60.0)) % 1.0;
+                float kickEnv = (float)Math.Pow(Math.Max(0.0, 1.0 - beatPhase * 2.4), 2.2) * 0.85f;
+                for (int b = 0; b < 64; b++) {
+                    float wave = (float)(0.22 + 0.18 * Math.Sin(t * 2.8 + b * 0.22) + 0.14 * Math.Cos(t * 1.7 - b * 0.35));
+                    if (b < 10) wave += kickEnv * (1.0f - b * 0.08f);
+                    Spectrum[b] = Spectrum[b] * 0.80f + Math.Max(0.04f, wave * sens * 0.75f) * 0.20f;
+                }
+                for (int i = 0; i < 256; i++) {
+                    double ang = i * 2.0 * Math.PI / 256.0;
+                    WaveL[i] = (float)(Math.Sin(ang * 3.0 + t * 3.2) * (0.35 + kickEnv * 0.35) + 0.18 * Math.Cos(ang * 7.0 - t * 4.5));
+                    WaveR[i] = (float)(Math.Cos(ang * 2.0 - t * 2.7) * (0.35 + kickEnv * 0.35) + 0.18 * Math.Sin(ang * 5.0 + t * 3.8));
+                }
+            }
+
+            // Compute 4 perceptual frequency bands
+            float sb = 0f, lm = 0f, vm = 0f, ht = 0f;
+            for (int i = 0; i < 7; i++) sb += Spectrum[i];
+            for (int i = 7; i < 18; i++) lm += Spectrum[i];
+            for (int i = 18; i < 40; i++) vm += Spectrum[i];
+            for (int i = 40; i < 64; i++) ht += Spectrum[i];
+            sb /= 7f;
+            lm /= 11f;
+            vm /= 22f;
+            ht /= 24f;
+
+            SubBass = SubBass * 0.55f + sb * 0.45f;
+            LowMid = LowMid * 0.65f + lm * 0.35f;
+            VocalMid = VocalMid * 0.65f + vm * 0.35f;
+            HighTreble = HighTreble * 0.65f + ht * 0.35f;
+
+            // Adaptive Spectral Flux Beat Detector
+            float instantBass = sb * 1.15f + lm * 0.45f;
+            avgBassEnergy = avgBassEnergy * 0.94f + instantBass * 0.06f;
+            BeatPulse *= 0.86f;
+
+            long dtBeat = nowMs - lastBeatTickMs;
+            if (instantBass > Math.Max(0.08f, avgBassEnergy * 1.28f) && dtBeat > 195) {
+                BeatPulse = 1.0f;
+                BeatCount++;
+                if (dtBeat > 260 && dtBeat < 1200) {
+                    float instBpm = 60000.0f / dtBeat;
+                    EstimatedBpm = EstimatedBpm * 0.82f + instBpm * 0.18f;
+                }
+                lastBeatTickMs = nowMs;
+            }
+        }
+
+        private static void ComputeRadix2Fft(float[] rex, float[] imx, int n) {
+            int j = 0;
+            for (int i = 0; i < n - 1; i++) {
+                if (i < j) {
+                    float tr = rex[i]; rex[i] = rex[j]; rex[j] = tr;
+                    float ti = imx[i]; imx[i] = imx[j]; imx[j] = ti;
+                }
+                int k = n >> 1;
+                while (k <= j) { j -= k; k >>= 1; }
+                j += k;
+            }
+            for (int len = 2; len <= n; len <<= 1) {
+                int half = len >> 1;
+                double ang = -2.0 * Math.PI / len;
+                float wMulR = (float)Math.Cos(ang);
+                float wMulI = (float)Math.Sin(ang);
+                for (int i = 0; i < n; i += len) {
+                    float wR = 1.0f, wI = 0.0f;
+                    for (int k = 0; k < half; k++) {
+                        int u = i + k;
+                        int v = u + half;
+                        float tR = wR * rex[v] - wI * imx[v];
+                        float tI = wR * imx[v] + wI * rex[v];
+                        rex[v] = rex[u] - tR;
+                        imx[v] = imx[u] - tI;
+                        rex[u] += tR;
+                        imx[u] += tI;
+                        float nextWR = wR * wMulR - wI * wMulI;
+                        wI = wR * wMulI + wI * wMulR;
+                        wR = nextWR;
+                    }
+                }
+            }
+        }
+    }
+    #endregion
+
     class AudioEngine {
         const uint AUDCLNT_STREAMFLAGS_LOOPBACK = 0x00020000;
         const uint AUDCLNT_STREAMFLAGS_EVENTCALLBACK = 0x00040000;
@@ -533,6 +723,7 @@ namespace DualAudioStudio {
         public volatile int SampleRate = 44100;
         public volatile float PeakLevelLeft = 0f;
         public volatile float PeakLevelRight = 0f;
+        public VisualizerDspEngine VisualizerDsp = new VisualizerDspEngine();
 
         public List<SecondarySpeaker> Speakers = new List<SecondarySpeaker>();
         private readonly object syncLock = new object();
@@ -573,6 +764,7 @@ namespace DualAudioStudio {
             }
             PeakLevelLeft = Math.Max(maxL, PeakLevelLeft * 0.80f);
             PeakLevelRight = Math.Max(maxR, PeakLevelRight * 0.80f);
+            VisualizerDsp.PushSamples(pData, frames, channels, isSilent);
         }
 
         private void AudioLoop() {
@@ -1392,6 +1584,705 @@ namespace DualAudioStudio {
     }
     #endregion
 
+    #region Fullscreen Hypnotic Trance Visualizer Studio (MilkDrop / Sacred Kaleidoscope / Shadertoy Inspired)
+    class TranceVisualizerForm : Form {
+        private readonly AudioEngine engine;
+        private readonly VisualizerDspEngine dsp;
+        private System.Windows.Forms.Timer renderTimer;
+        private Bitmap trailCanvas;
+        private int modeIndex = 0; // 0=Auto-Morph Odyssey, 1=Cyber-Vortex Tunnel, 2=Sacred Mandala, 3=Liquid Aurora & Lissajous, 4=Wormhole Hyperdrive
+        private int paletteIndex = 0; // 0=Psychedelic Rainbow, 1=Cyberpunk Neon, 2=Solar Gold, 3=Deep Ocean, 4=Acid Emerald
+        private int sensIndex = 1; // 0=Chill(0.85x), 1=Balanced(1.2x), 2=Intense(1.55x), 3=Hyper-Trance(1.95x)
+        private bool isFullscreen = false;
+        private Rectangle normalBounds;
+        private FormWindowState prevWindowState;
+
+        private double timePhase = 0.0;
+        private double spinAngle1 = 0.0;
+        private double spinAngle2 = 0.0;
+        private double tunnelOffset = 0.0;
+        private int lastBeatSeen = -1;
+        private int symmetryFold = 12;
+
+        private struct Shockwave {
+            public float Radius;
+            public float Alpha;
+            public float Hue;
+        }
+        private readonly List<Shockwave> shockwaves = new List<Shockwave>();
+
+        private struct StarParticle {
+            public float Angle;
+            public float Radius;
+            public float Z;
+            public float Speed;
+            public float HueOffset;
+        }
+        private readonly StarParticle[] stars = new StarParticle[260];
+        private readonly Random rng = new Random(42);
+
+        // Auto-hiding HUD controls
+        private Panel hudPanel;
+        private ModernButton btnMode;
+        private ModernButton btnPalette;
+        private ModernButton btnSens;
+        private ModernButton btnFullscreen;
+        private Label lblBeatHud;
+        private DateTime lastMouseMove = DateTime.UtcNow;
+        private Point lastMousePt = Point.Empty;
+        private bool cursorHidden = false;
+        private string screenshotPath = null;
+        private int frameCounter = 0;
+
+        private static readonly string[] ModeNames = new string[] {
+            "Mode: Auto-Morph Odyssey (Space)",
+            "Mode: Cyber-Vortex Tunnel (Space)",
+            "Mode: Sacred Kaleidoscope (Space)",
+            "Mode: Liquid Aurora & Lissajous (Space)",
+            "Mode: Wormhole Hyperdrive (Space)"
+        };
+
+        private static readonly string[] PaletteNames = new string[] {
+            "Palette: Psychedelic Spectrum (C)",
+            "Palette: Cyberpunk Neon (C)",
+            "Palette: Solar Supernova (C)",
+            "Palette: Bioluminescent Ocean (C)",
+            "Palette: Acid Matrix Emerald (C)"
+        };
+
+        private static readonly string[] SensNames = new string[] {
+            "Beat Drive: Chill 0.8x (V)",
+            "Beat Drive: Balanced 1.2x (V)",
+            "Beat Drive: Intense 1.6x (V)",
+            "Beat Drive: Hyper-Trance 2.0x (V)"
+        };
+        private static readonly float[] SensValues = new float[] { 0.85f, 1.20f, 1.60f, 2.00f };
+
+        public TranceVisualizerForm(AudioEngine engine, Icon appIcon, bool startFullscreen = false, string screenshotPath = null) {
+            this.engine = engine;
+            this.dsp = engine.VisualizerDsp;
+            this.screenshotPath = screenshotPath;
+
+            this.Text = "Dual Audio Synchronizer \u2022 Hypnotic Trance Visualizer (Press F11 or Double-Click for Fullscreen)";
+            this.Size = new Size(1080, 680);
+            this.MinimumSize = new Size(760, 480);
+            this.StartPosition = FormStartPosition.CenterScreen;
+            this.BackColor = Color.FromArgb(5, 6, 15);
+            this.ForeColor = Color.White;
+            this.Font = new Font("Segoe UI", 9.2f);
+            this.Icon = appIcon;
+            this.KeyPreview = true;
+            this.DoubleBuffered = true;
+            this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+
+            InitStars();
+            BuildHud();
+
+            this.KeyDown += OnVisualizerKeyDown;
+            this.MouseDoubleClick += (s, e) => ToggleFullscreen();
+            this.MouseMove += (s, e) => WakeHud(e.Location);
+
+            if (startFullscreen) {
+                this.Load += (s, e) => ToggleFullscreen();
+            }
+
+            renderTimer = new System.Windows.Forms.Timer { Interval = 16 }; // ~60 FPS
+            renderTimer.Tick += (s, e) => StepAndRender();
+            renderTimer.Start();
+
+            this.FormClosing += (s, e) => {
+                renderTimer.Stop();
+                if (cursorHidden) { Cursor.Show(); cursorHidden = false; }
+                if (trailCanvas != null) { trailCanvas.Dispose(); trailCanvas = null; }
+            };
+        }
+
+        protected override void OnHandleCreated(EventArgs e) {
+            base.OnHandleCreated(e);
+            try {
+                int dark = 1;
+                NativeMethods.DwmSetWindowAttribute(this.Handle, 20, ref dark, sizeof(int));
+            } catch { }
+        }
+
+        private void InitStars() {
+            for (int i = 0; i < stars.Length; i++) {
+                stars[i] = new StarParticle {
+                    Angle = (float)(rng.NextDouble() * Math.PI * 2.0),
+                    Radius = 0.08f + (float)rng.NextDouble() * 0.92f,
+                    Z = 0.05f + (float)rng.NextDouble() * 0.95f,
+                    Speed = 0.006f + (float)rng.NextDouble() * 0.014f,
+                    HueOffset = (float)(rng.NextDouble() * 360.0)
+                };
+            }
+        }
+
+        private void BuildHud() {
+            hudPanel = new Panel {
+                Width = this.ClientSize.Width,
+                Height = 52,
+                Dock = DockStyle.Bottom,
+                BackColor = Color.FromArgb(14, 16, 28),
+                Padding = new Padding(16, 8, 16, 8)
+            };
+            hudPanel.Paint += (s, e) => {
+                using (var p = new Pen(Color.FromArgb(75, 56, 189, 248), 1f)) {
+                    e.Graphics.DrawLine(p, 0, 0, hudPanel.Width, 0);
+                }
+            };
+
+            btnMode = new ModernButton {
+                Text = ModeNames[modeIndex],
+                Size = new Size(242, 34),
+                Location = new Point(16, 9),
+                BaseColor = Color.FromArgb(46, 26, 90),
+                HoverColor = Color.FromArgb(68, 38, 130),
+                BorderColor = Color.FromArgb(140, 192, 132, 252),
+                ForeColor = Color.FromArgb(243, 232, 255),
+                Font = new Font("Segoe UI Semibold", 8.8f, FontStyle.Bold)
+            };
+            btnMode.Click += (s, e) => CycleMode();
+
+            btnPalette = new ModernButton {
+                Text = PaletteNames[paletteIndex],
+                Size = new Size(228, 34),
+                Location = new Point(266, 9),
+                BaseColor = Color.FromArgb(28, 38, 68),
+                HoverColor = Color.FromArgb(40, 54, 92),
+                BorderColor = Color.FromArgb(120, 56, 189, 248),
+                ForeColor = Color.FromArgb(186, 230, 253),
+                Font = new Font("Segoe UI Semibold", 8.8f, FontStyle.Bold)
+            };
+            btnPalette.Click += (s, e) => CyclePalette();
+
+            btnSens = new ModernButton {
+                Text = SensNames[sensIndex],
+                Size = new Size(192, 34),
+                Location = new Point(502, 9),
+                BaseColor = Color.FromArgb(30, 42, 58),
+                HoverColor = Color.FromArgb(42, 58, 80),
+                BorderColor = Color.FromArgb(110, 74, 222, 128),
+                ForeColor = Color.FromArgb(187, 247, 208),
+                Font = new Font("Segoe UI Semibold", 8.8f, FontStyle.Bold)
+            };
+            btnSens.Click += (s, e) => CycleSensitivity();
+
+            lblBeatHud = new Label {
+                Text = "\u25CF BEAT LOCK  \u2022  124 BPM",
+                Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(74, 222, 128),
+                AutoSize = true,
+                Location = new Point(708, 17)
+            };
+
+            btnFullscreen = new ModernButton {
+                Text = "\u26F6 Fullscreen (F11)",
+                Size = new Size(154, 34),
+                Location = new Point(Math.Max(860, hudPanel.Width - 170), 9),
+                BaseColor = Color.FromArgb(37, 99, 235),
+                HoverColor = Color.FromArgb(59, 130, 246),
+                BorderColor = Color.FromArgb(150, 147, 197, 253),
+                Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold)
+            };
+            btnFullscreen.Click += (s, e) => ToggleFullscreen();
+            hudPanel.Resize += (s, e) => {
+                if (btnFullscreen != null) {
+                    btnFullscreen.Location = new Point(Math.Max(860, hudPanel.Width - 170), 9);
+                }
+            };
+
+            hudPanel.Controls.Add(btnMode);
+            hudPanel.Controls.Add(btnPalette);
+            hudPanel.Controls.Add(btnSens);
+            hudPanel.Controls.Add(lblBeatHud);
+            hudPanel.Controls.Add(btnFullscreen);
+            this.Controls.Add(hudPanel);
+        }
+
+        private void WakeHud(Point pt) {
+            if (Math.Abs(pt.X - lastMousePt.X) > 3 || Math.Abs(pt.Y - lastMousePt.Y) > 3) {
+                lastMousePt = pt;
+                lastMouseMove = DateTime.UtcNow;
+                if (!hudPanel.Visible) hudPanel.Visible = true;
+                if (cursorHidden) { Cursor.Show(); cursorHidden = false; }
+            }
+        }
+
+        private void CycleMode() {
+            modeIndex = (modeIndex + 1) % ModeNames.Length;
+            btnMode.Text = ModeNames[modeIndex];
+            btnMode.Invalidate();
+            lastMouseMove = DateTime.UtcNow;
+        }
+
+        private void CyclePalette() {
+            paletteIndex = (paletteIndex + 1) % PaletteNames.Length;
+            btnPalette.Text = PaletteNames[paletteIndex];
+            btnPalette.Invalidate();
+            lastMouseMove = DateTime.UtcNow;
+        }
+
+        private void CycleSensitivity() {
+            sensIndex = (sensIndex + 1) % SensNames.Length;
+            dsp.Sensitivity = SensValues[sensIndex];
+            btnSens.Text = SensNames[sensIndex];
+            btnSens.Invalidate();
+            lastMouseMove = DateTime.UtcNow;
+        }
+
+        public void ToggleFullscreen() {
+            if (!isFullscreen) {
+                prevWindowState = this.WindowState;
+                normalBounds = this.Bounds;
+                this.FormBorderStyle = FormBorderStyle.None;
+                this.WindowState = FormWindowState.Normal;
+                this.Bounds = Screen.FromControl(this).Bounds;
+                this.TopMost = true;
+                isFullscreen = true;
+                btnFullscreen.Text = "\u2715 Exit Fullscreen (Esc)";
+                btnFullscreen.BaseColor = Color.FromArgb(185, 28, 28);
+            } else {
+                this.TopMost = false;
+                this.FormBorderStyle = FormBorderStyle.Sizable;
+                this.Bounds = normalBounds;
+                this.WindowState = prevWindowState;
+                isFullscreen = false;
+                btnFullscreen.Text = "\u26F6 Fullscreen (F11)";
+                btnFullscreen.BaseColor = Color.FromArgb(37, 99, 235);
+                if (!hudPanel.Visible) hudPanel.Visible = true;
+                if (cursorHidden) { Cursor.Show(); cursorHidden = false; }
+            }
+            btnFullscreen.Invalidate();
+            lastMouseMove = DateTime.UtcNow;
+        }
+
+        private void OnVisualizerKeyDown(object sender, KeyEventArgs e) {
+            lastMouseMove = DateTime.UtcNow;
+            if (!hudPanel.Visible) hudPanel.Visible = true;
+            if (cursorHidden) { Cursor.Show(); cursorHidden = false; }
+
+            if (e.KeyCode == Keys.F11 || e.KeyCode == Keys.F || e.KeyCode == Keys.Enter) {
+                ToggleFullscreen();
+                e.Handled = true;
+            } else if (e.KeyCode == Keys.Escape) {
+                if (isFullscreen) ToggleFullscreen();
+                else this.Close();
+                e.Handled = true;
+            } else if (e.KeyCode == Keys.Space) {
+                CycleMode();
+                e.Handled = true;
+            } else if (e.KeyCode == Keys.C) {
+                CyclePalette();
+                e.Handled = true;
+            } else if (e.KeyCode == Keys.V || e.KeyCode == Keys.Oemplus || e.KeyCode == Keys.Add) {
+                CycleSensitivity();
+                e.Handled = true;
+            } else if (e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D5) {
+                modeIndex = (int)(e.KeyCode - Keys.D1);
+                btnMode.Text = ModeNames[modeIndex];
+                btnMode.Invalidate();
+                e.Handled = true;
+            }
+        }
+
+        private Color GetPaletteColor(double hueDeg, float saturation, float value, int alpha = 255) {
+            double h = hueDeg;
+            if (paletteIndex == 1) {
+                // Cyberpunk Neon: oscillate between Electric Cyan (188), Neon Violet (275), Hot Magenta (322)
+                double t = (Math.Sin(hueDeg * Math.PI / 180.0) + 1.0) * 0.5;
+                h = 185.0 + t * 145.0;
+            } else if (paletteIndex == 2) {
+                // Solar Supernova: Crimson (350) -> Amber (30) -> Gold (55)
+                double t = (Math.Sin(hueDeg * Math.PI / 180.0) + 1.0) * 0.5;
+                h = (348.0 + t * 68.0) % 360.0;
+            } else if (paletteIndex == 3) {
+                // Bioluminescent Deep Ocean: Mint (150) -> Cyan (195) -> Deep Indigo (235)
+                double t = (Math.Sin(hueDeg * Math.PI / 180.0) + 1.0) * 0.5;
+                h = 150.0 + t * 85.0;
+            } else if (paletteIndex == 4) {
+                // Acid Matrix Emerald: Emerald (115) -> Neon Lime (78) -> Cyan-Green (162)
+                double t = (Math.Sin(hueDeg * Math.PI / 180.0) + 1.0) * 0.5;
+                h = 82.0 + t * 78.0;
+            }
+            return HsvToColor(h, saturation, value, alpha);
+        }
+
+        private static Color HsvToColor(double h, double s, double v, int alpha = 255) {
+            h = ((h % 360.0) + 360.0) % 360.0;
+            s = Math.Max(0.0, Math.Min(1.0, s));
+            v = Math.Max(0.0, Math.Min(1.0, v));
+            double c = v * s;
+            double x = c * (1.0 - Math.Abs(((h / 60.0) % 2.0) - 1.0));
+            double m = v - c;
+            double r1 = 0, g1 = 0, b1 = 0;
+            if (h < 60) { r1 = c; g1 = x; }
+            else if (h < 120) { r1 = x; g1 = c; }
+            else if (h < 180) { g1 = c; b1 = x; }
+            else if (h < 240) { g1 = x; b1 = c; }
+            else if (h < 300) { r1 = x; b1 = c; }
+            else { r1 = c; b1 = x; }
+            int r = Math.Max(0, Math.Min(255, (int)((r1 + m) * 255.0)));
+            int g = Math.Max(0, Math.Min(255, (int)((g1 + m) * 255.0)));
+            int b = Math.Max(0, Math.Min(255, (int)((b1 + m) * 255.0)));
+            return Color.FromArgb(Math.Max(0, Math.Min(255, alpha)), r, g, b);
+        }
+
+        private void StepAndRender() {
+            dsp.UpdateFrame();
+            frameCounter++;
+
+            float bass = dsp.SubBass;
+            float lowMid = dsp.LowMid;
+            float vocal = dsp.VocalMid;
+            float treble = dsp.HighTreble;
+            float pulse = dsp.BeatPulse;
+
+            timePhase += 0.022 + bass * 0.042 + pulse * 0.035;
+            spinAngle1 += 0.011 + lowMid * 0.028 + pulse * 0.022;
+            spinAngle2 -= 0.014 + vocal * 0.025;
+            tunnelOffset = (tunnelOffset + 0.016 + bass * 0.038 + pulse * 0.045) % 1.0;
+
+            if (dsp.BeatCount != lastBeatSeen) {
+                lastBeatSeen = dsp.BeatCount;
+                shockwaves.Add(new Shockwave {
+                    Radius = 18f,
+                    Alpha = 235f,
+                    Hue = (float)((timePhase * 48.0) % 360.0)
+                });
+                if ((dsp.BeatCount % 8) == 0) {
+                    int[] folds = new int[] { 8, 10, 12, 14, 16 };
+                    symmetryFold = folds[(dsp.BeatCount / 8) % folds.Length];
+                }
+            }
+
+            for (int i = shockwaves.Count - 1; i >= 0; i--) {
+                var sw = shockwaves[i];
+                sw.Radius += 8.5f + bass * 18.0f + pulse * 12.0f;
+                sw.Alpha -= 4.2f;
+                if (sw.Alpha <= 4f) shockwaves.RemoveAt(i);
+                else shockwaves[i] = sw;
+            }
+
+            // Auto-hide HUD after 2.6 seconds in fullscreen mode
+            if (isFullscreen && (DateTime.UtcNow - lastMouseMove).TotalSeconds > 2.6) {
+                if (hudPanel.Visible) hudPanel.Visible = false;
+                if (!cursorHidden) { Cursor.Hide(); cursorHidden = true; }
+            }
+
+            if (hudPanel.Visible && (frameCounter & 3) == 0) {
+                string state = dsp.IsReceivingAudio ? "\u25CF LIVE BEAT LOCK" : "\u25CE TRANCE SYNTH";
+                lblBeatHud.Text = string.Format(CultureInfo.InvariantCulture, "{0}  \u2022  {1:0} BPM", state, dsp.EstimatedBpm);
+                lblBeatHud.ForeColor = (pulse > 0.45f) ? Color.FromArgb(56, 189, 248) : Color.FromArgb(74, 222, 128);
+            }
+
+            this.Invalidate();
+
+            if (!string.IsNullOrEmpty(screenshotPath) && frameCounter >= 48) {
+                string outFile = screenshotPath;
+                screenshotPath = null;
+                try {
+                    using (var shot = new Bitmap(this.Width, this.Height)) {
+                        this.DrawToBitmap(shot, new Rectangle(0, 0, this.Width, this.Height));
+                        shot.Save(outFile, ImageFormat.Png);
+                    }
+                } catch { }
+                Application.Exit();
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e) {
+            int w = Math.Max(64, this.ClientSize.Width);
+            int h = Math.Max(64, this.ClientSize.Height);
+
+            if (trailCanvas == null || trailCanvas.Width != w || trailCanvas.Height != h) {
+                if (trailCanvas != null) trailCanvas.Dispose();
+                trailCanvas = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+                using (var gInit = Graphics.FromImage(trailCanvas)) {
+                    gInit.Clear(Color.FromArgb(5, 6, 15));
+                }
+            }
+
+            using (var g = Graphics.FromImage(trailCanvas)) {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+
+                // Phosphor feedback persistence veil (creates silky MilkDrop motion trails)
+                int veilAlpha = Math.Max(22, Math.Min(54, 40 - (int)(dsp.SubBass * 14f)));
+                using (var veilBr = new SolidBrush(Color.FromArgb(veilAlpha, 5, 6, 16))) {
+                    g.FillRectangle(veilBr, 0, 0, w, h);
+                }
+
+                float cx = w * 0.5f;
+                float cy = (hudPanel.Visible ? (h - hudPanel.Height) : h) * 0.5f;
+                float minDim = Math.Min(w, h);
+
+                // Determine active mode (Mode 0 = Auto-Morph Odyssey blends two engines seamlessly!)
+                int activePrimary = modeIndex;
+                int activeSecondary = -1;
+                if (modeIndex == 0) {
+                    int cycle = (dsp.BeatCount / 12) % 4;
+                    activePrimary = cycle + 1;
+                    activeSecondary = ((cycle + 1) % 4) + 1;
+                }
+
+                RenderEngineLayer(g, activePrimary, cx, cy, w, h, minDim, 1.0f);
+                if (activeSecondary > 0) {
+                    RenderEngineLayer(g, activeSecondary, cx, cy, w, h, minDim, 0.52f);
+                }
+
+                // Render expanding Beat Shockwave Rings
+                for (int i = 0; i < shockwaves.Count; i++) {
+                    var sw = shockwaves[i];
+                    if (sw.Radius < minDim * 0.95f) {
+                        Color sc = GetPaletteColor(sw.Hue, 0.85f, 1.0f, (int)Math.Min(220f, sw.Alpha));
+                        using (var pen = new Pen(sc, 1.8f + dsp.BeatPulse * 2.2f)) {
+                            g.DrawEllipse(pen, cx - sw.Radius, cy - sw.Radius, sw.Radius * 2f, sw.Radius * 2f);
+                        }
+                    }
+                }
+            }
+
+            e.Graphics.DrawImageUnscaled(trailCanvas, 0, 0);
+        }
+
+        private void RenderEngineLayer(Graphics g, int engineType, float cx, float cy, int w, int h, float minDim, float opacity) {
+            if (engineType == 1) {
+                RenderCyberVortexTunnel(g, cx, cy, minDim, opacity);
+            } else if (engineType == 2) {
+                RenderSacredKaleidoscopeMandala(g, cx, cy, minDim, opacity);
+            } else if (engineType == 3) {
+                RenderLiquidAuroraAndLissajous(g, cx, cy, w, h, minDim, opacity);
+            } else {
+                RenderWormholeHyperdrive(g, cx, cy, minDim, opacity);
+            }
+        }
+
+        // Engine 1: MilkDrop-Inspired 3D Logarithmic Cyber-Vortex & Frequency-Warped Warp Tunnel
+        private void RenderCyberVortexTunnel(Graphics g, float cx, float cy, float minDim, float opacity) {
+            float bass = dsp.SubBass;
+            float pulse = dsp.BeatPulse;
+            int rings = 22;
+            int ptsPerRing = 64;
+            float maxR = minDim * (0.62f + bass * 0.18f);
+
+            // Swaying vanishing center
+            float vx = cx + (float)Math.Sin(timePhase * 0.75) * minDim * 0.055f;
+            float vy = cy + (float)Math.Cos(timePhase * 0.58) * minDim * 0.045f;
+
+            for (int rIdx = 0; rIdx < rings; rIdx++) {
+                double depth = ((rIdx + tunnelOffset) / rings); // 0 (center) -> 1 (outer edge)
+                double zCurve = Math.Pow(depth, 1.75);
+                float baseRadius = (float)(zCurve * maxR) + 8f;
+                int alpha = (int)(Math.Sin(depth * Math.PI) * 235.0 * opacity);
+                if (alpha < 10) continue;
+
+                double ringSpin = spinAngle1 * ((rIdx & 1) == 0 ? 1.0 : -0.85) + depth * 2.4;
+                double hue = (timePhase * 42.0 + rIdx * 14.0 + pulse * 35.0) % 360.0;
+                Color ringCol = GetPaletteColor(hue, 0.88f, 0.98f, alpha);
+
+                PointF[] poly = new PointF[ptsPerRing];
+                for (int i = 0; i < ptsPerRing; i++) {
+                    double theta = (i * 2.0 * Math.PI / ptsPerRing) + ringSpin;
+                    int specBin = (i + rIdx * 2) & 63;
+                    float specVal = dsp.Spectrum[specBin];
+                    double harmonicWarp = 1.0
+                        + 0.22 * Math.Sin(theta * 6.0 + timePhase * 1.8) * (0.4 + bass)
+                        + 0.28 * specVal * Math.Cos(theta * 3.0 - spinAngle2);
+                    float rad = baseRadius * (float)harmonicWarp;
+                    float rx = vx + (float)((cx - vx) * depth) + (float)Math.Cos(theta) * rad;
+                    float ry = vy + (float)((cy - vy) * depth) + (float)Math.Sin(theta) * rad;
+                    poly[i] = new PointF(rx, ry);
+                }
+
+                float penW = (float)(1.1 + depth * 2.2 + pulse * 1.4);
+                using (var pen = new Pen(ringCol, penW)) {
+                    g.DrawPolygon(pen, poly);
+                }
+            }
+        }
+
+        // Engine 2: Sacred Geometry 12-Fold Kaleidoscope Mandala & Golden-Ratio Phyllotaxis Bloom
+        private void RenderSacredKaleidoscopeMandala(Graphics g, float cx, float cy, float minDim, float opacity) {
+            float bass = dsp.SubBass;
+            float vocal = dsp.VocalMid;
+            float treble = dsp.HighTreble;
+            float pulse = dsp.BeatPulse;
+
+            int folds = symmetryFold;
+            int steps = 140;
+            float baseR = minDim * (0.16f + bass * 0.14f + pulse * 0.06f);
+
+            // 3 counter-rotating harmonic mandala layers
+            for (int layer = 0; layer < 3; layer++) {
+                float layerScale = 0.65f + layer * 0.48f;
+                double rot = (layer == 1) ? -spinAngle1 * 1.35 : spinAngle1 * (0.9 + layer * 0.3);
+                double hue = (timePhase * 38.0 + layer * 85.0 + pulse * 40.0) % 360.0;
+                int alpha = (int)((225 - layer * 35) * opacity);
+                Color col = GetPaletteColor(hue, 0.85f, 1.0f, alpha);
+                Color glowCol = GetPaletteColor(hue + 25.0, 0.95f, 1.0f, (int)(alpha * 0.38f));
+
+                PointF[] pts = new PointF[steps];
+                for (int i = 0; i < steps; i++) {
+                    double t = i * 2.0 * Math.PI / steps;
+                    int bin = (i * 64 / steps) & 63;
+                    float sVal = dsp.Spectrum[bin];
+
+                    // Sacred Rhodonea + Spirograph harmonic equation
+                    double petal1 = Math.Cos(folds * t + rot);
+                    double petal2 = Math.Sin((folds * 0.5) * t - spinAngle2 * 1.6);
+                    double r = baseR * layerScale * (1.0 + (0.38 + vocal * 0.45) * petal1 + (0.24 + sVal * 0.42) * petal2);
+
+                    pts[i] = new PointF(
+                        cx + (float)(Math.Cos(t + rot * 0.25) * r),
+                        cy + (float)(Math.Sin(t + rot * 0.25) * r)
+                    );
+                }
+
+                using (var glowPen = new Pen(glowCol, 4.5f + pulse * 3f))
+                using (var corePen = new Pen(col, 1.8f)) {
+                    g.DrawClosedCurve(glowPen, pts);
+                    g.DrawClosedCurve(corePen, pts);
+                }
+            }
+
+            // Golden-Angle (137.508 deg) Phyllotaxis Spiraling Lotus Seeds in Center
+            int seeds = 72;
+            double goldenAngle = 137.50776405 * Math.PI / 180.0;
+            for (int n = 1; n <= seeds; n++) {
+                double ang = n * goldenAngle + spinAngle1 * 1.8;
+                float spec = dsp.Spectrum[n & 63];
+                double rad = Math.Sqrt(n) * (minDim * 0.024) * (0.85 + bass * 0.42 + spec * 0.25);
+                float sx = cx + (float)(Math.Cos(ang) * rad);
+                float sy = cy + (float)(Math.Sin(ang) * rad);
+                float dotR = 2.2f + (n / (float)seeds) * 3.2f + pulse * 2.4f + treble * 2.0f;
+                Color sc = GetPaletteColor(timePhase * 55.0 + n * 4.5, 0.80f, 1.0f, (int)(220 * opacity));
+                using (var br = new SolidBrush(sc)) {
+                    g.FillEllipse(br, sx - dotR, sy - dotR, dotR * 2f, dotR * 2f);
+                }
+            }
+        }
+
+        // Engine 3: Liquid Plasma Aurora Ribbons & 4D Stereo Lissajous Phase Core
+        private void RenderLiquidAuroraAndLissajous(Graphics g, float cx, float cy, int w, int h, float minDim, float opacity) {
+            float bass = dsp.SubBass;
+            float pulse = dsp.BeatPulse;
+
+            // 1. 4 Interwoven Liquid Plasma Sine Ribbons across the viewport
+            int ribbonPts = 72;
+            for (int rb = 0; rb < 4; rb++) {
+                PointF[] wavePts = new PointF[ribbonPts];
+                double rbPhase = timePhase * (1.4 + rb * 0.35) + rb * 1.2;
+                for (int i = 0; i < ribbonPts; i++) {
+                    float x = (i / (float)(ribbonPts - 1)) * w;
+                    int wIdx = (i * 3 + rb * 19) & 255;
+                    float sample = (rb & 1) == 0 ? dsp.WaveL[wIdx] : dsp.WaveR[wIdx];
+                    double env = Math.Sin((i / (double)(ribbonPts - 1)) * Math.PI);
+                    double yOff = Math.Sin(i * 0.14 + rbPhase) * minDim * (0.12 + bass * 0.16)
+                                + sample * minDim * 0.22 * env;
+                    wavePts[i] = new PointF(x, cy + (float)yOff);
+                }
+                Color rc = GetPaletteColor(timePhase * 45.0 + rb * 65.0, 0.85f, 1.0f, (int)(175 * opacity));
+                using (var pen = new Pen(rc, 2.2f + pulse * 1.8f)) {
+                    g.DrawCurve(pen, wavePts, 0.5f);
+                }
+            }
+
+            // 2. 360-Degree Polar FFT Aurora Halo
+            float haloR = minDim * (0.24f + bass * 0.08f);
+            for (int b = 0; b < 64; b++) {
+                float val = dsp.Spectrum[b];
+                float barLen = Math.Max(6f, val * minDim * 0.22f);
+                for (int side = -1; side <= 1; side += 2) {
+                    double ang = (b / 64.0) * Math.PI * side + spinAngle1 * 0.6 - Math.PI * 0.5;
+                    float cAng = (float)Math.Cos(ang);
+                    float sAng = (float)Math.Sin(ang);
+                    float x0 = cx + cAng * haloR;
+                    float y0 = cy + sAng * haloR;
+                    float x1 = cx + cAng * (haloR + barLen);
+                    float y1 = cy + sAng * (haloR + barLen);
+                    Color bc = GetPaletteColor(timePhase * 50.0 + b * 5.2, 0.90f, 1.0f, (int)(210 * opacity));
+                    using (var pen = new Pen(bc, 3.0f)) {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        g.DrawLine(pen, x0, y0, x1, y1);
+                    }
+                }
+            }
+
+            // 3. Stereo L/R Lissajous Phase Attractor Core
+            int lissCount = 128;
+            PointF[] lissPts = new PointF[lissCount];
+            float lissScale = minDim * (0.20f + pulse * 0.06f);
+            double cRot = Math.Cos(spinAngle2);
+            double sRot = Math.Sin(spinAngle2);
+            for (int i = 0; i < lissCount; i++) {
+                float l = dsp.WaveL[i * 2];
+                float r = dsp.WaveR[i * 2];
+                double rx = l * cRot - r * sRot;
+                double ry = l * sRot + r * cRot;
+                lissPts[i] = new PointF(cx + (float)(rx * lissScale), cy + (float)(ry * lissScale));
+            }
+            Color lc = GetPaletteColor(timePhase * 70.0 + 140.0, 0.70f, 1.0f, (int)(235 * opacity));
+            using (var pen = new Pen(lc, 2.0f)) {
+                g.DrawClosedCurve(pen, lissPts);
+            }
+        }
+
+        // Engine 4: 3D Relativistic Wormhole Hyperdrive & Nebula Starfield
+        private void RenderWormholeHyperdrive(Graphics g, float cx, float cy, float minDim, float opacity) {
+            float bass = dsp.SubBass;
+            float treble = dsp.HighTreble;
+            float pulse = dsp.BeatPulse;
+            float maxR = minDim * 0.72f;
+
+            float wx = cx + (float)Math.Sin(timePhase * 0.9) * minDim * 0.08f;
+            float wy = cy + (float)Math.Cos(timePhase * 0.7) * minDim * 0.06f;
+
+            float speedBoost = 1.0f + bass * 3.8f + pulse * 3.2f;
+            for (int i = 0; i < stars.Length; i++) {
+                var st = stars[i];
+                float prevZ = st.Z;
+                st.Z -= st.Speed * speedBoost;
+                st.Angle += (0.008f + bass * 0.015f) * ((i & 1) == 0 ? 1f : -1f);
+                if (st.Z <= 0.04f) {
+                    st.Z = 0.98f;
+                    st.Radius = 0.08f + (float)rng.NextDouble() * 0.92f;
+                    prevZ = st.Z;
+                }
+                stars[i] = st;
+
+                float proj0 = st.Radius / Math.Max(0.05f, prevZ);
+                float proj1 = st.Radius / Math.Max(0.04f, st.Z);
+                float r0 = proj0 * maxR * 0.35f;
+                float r1 = proj1 * maxR * 0.35f;
+                if (r1 > maxR * 1.4f) continue;
+
+                float cA = (float)Math.Cos(st.Angle);
+                float sA = (float)Math.Sin(st.Angle);
+                float x0 = wx + cA * r0;
+                float y0 = wy + sA * r0;
+                float x1 = wx + cA * r1;
+                float y1 = wy + sA * r1;
+
+                int alpha = (int)(Math.Min(1.0f, (1.0f - st.Z) * 1.4f) * 245f * opacity);
+                Color sc = GetPaletteColor(timePhase * 40.0 + st.HueOffset, 0.82f, 1.0f, alpha);
+                float thickness = Math.Max(1.2f, (1.0f - st.Z) * 3.8f + treble * 1.8f);
+                using (var pen = new Pen(sc, thickness)) {
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    g.DrawLine(pen, x0, y0, x1, y1);
+                }
+            }
+
+            // Inner glowing wormhole singularity ring
+            float coreR = minDim * (0.09f + bass * 0.06f + pulse * 0.04f);
+            Color coreCol = GetPaletteColor(timePhase * 65.0, 0.90f, 1.0f, (int)(220 * opacity));
+            using (var pen = new Pen(coreCol, 3.2f + pulse * 3f)) {
+                g.DrawEllipse(pen, wx - coreR, wy - coreR, coreR * 2f, coreR * 2f);
+            }
+        }
+    }
+    #endregion
+
     #region Main Studio Window
     public class MainForm : Form {
         private AudioEngine engine;
@@ -1413,6 +2304,7 @@ namespace DualAudioStudio {
         private bool isPopulating = false;
         private bool startMinimized = false;
         private string screenshotPath = null;
+        private TranceVisualizerForm activeVisualizer = null;
 
         private static string AppDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DualAudio");
         private static string SettingsFile = Path.Combine(AppDir, "settings.ini");
@@ -1518,9 +2410,9 @@ namespace DualAudioStudio {
             };
 
             var lblSub = new Label {
-                Text = "Phase-Locked Multi-Speaker Engine & Hearing Clarity Studio  \u2022  v2.0",
+                Text = "Phase-Locked Multi-Speaker & Hearing Clarity Studio  \u2022  v2.0",
                 UseMnemonic = false,
-                Font = new Font("Segoe UI", 9f),
+                Font = new Font("Segoe UI", 8.8f),
                 ForeColor = Color.FromArgb(148, 163, 184),
                 AutoSize = true,
                 Location = new Point(95, 45)
@@ -1536,16 +2428,28 @@ namespace DualAudioStudio {
 
             var lblMeterCaption = new Label {
                 Text = "LIVE SIGNAL",
-                Font = new Font("Segoe UI Semibold", 7.5f, FontStyle.Bold),
+                Font = new Font("Segoe UI Semibold", 7.2f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 116, 139),
                 AutoSize = true,
-                Location = new Point(470, 18)
+                Location = new Point(458, 13)
             };
 
             levelMeter = new LevelMeterBar {
-                Location = new Point(470, 36),
-                Size = new Size(135, 22)
+                Location = new Point(458, 28),
+                Size = new Size(152, 20)
             };
+
+            var btnVisualizer = new ModernButton {
+                Text = "\u2728 Trance Visualizer",
+                Font = new Font("Segoe UI Semibold", 8.8f, FontStyle.Bold),
+                Size = new Size(152, 30),
+                Location = new Point(458, 53),
+                BaseColor = Color.FromArgb(88, 28, 135),
+                HoverColor = Color.FromArgb(126, 34, 206),
+                BorderColor = Color.FromArgb(175, 192, 132, 252),
+                ForeColor = Color.FromArgb(243, 232, 255)
+            };
+            btnVisualizer.Click += (s, e) => OpenVisualizer(false);
 
             btnTogglePause = new ModernButton {
                 Text = "Pause Sync",
@@ -1600,6 +2504,7 @@ namespace DualAudioStudio {
             headerPanel.Controls.Add(lblStatusPill);
             headerPanel.Controls.Add(lblMeterCaption);
             headerPanel.Controls.Add(levelMeter);
+            headerPanel.Controls.Add(btnVisualizer);
             headerPanel.Controls.Add(btnTogglePause);
             headerPanel.Controls.Add(btnTestTone);
             headerPanel.Controls.Add(btnRefresh);
@@ -1723,7 +2628,7 @@ namespace DualAudioStudio {
 
             chkStartup = new ModernCheck {
                 Text = "Start automatically with Windows",
-                Size = new Size(216, 24),
+                Size = new Size(226, 24),
                 Location = new Point(22, 16),
                 Checked = true
             };
@@ -1737,7 +2642,7 @@ namespace DualAudioStudio {
             chkCloseToTray = new ModernCheck {
                 Text = "Keep in System Tray when closed",
                 Size = new Size(228, 24),
-                Location = new Point(244, 16),
+                Location = new Point(254, 16),
                 Checked = true
             };
             chkCloseToTray.CheckedChanged += (s, e) => {
@@ -1804,6 +2709,7 @@ namespace DualAudioStudio {
 
             var trayMenu = new ContextMenuStrip();
             trayMenu.Items.Add("Open Studio Control Panel", null, (s, e) => RestoreFromTray());
+            trayMenu.Items.Add("\u2728 Open Trance Visualizer (Fullscreen)", null, (s, e) => OpenVisualizer(true));
             trayMenu.Items.Add("Pause / Resume Mirroring", null, (s, e) => {
                 engine.IsPaused = !engine.IsPaused;
                 UpdateStatusUi();
@@ -1879,6 +2785,16 @@ namespace DualAudioStudio {
                     try { System.Media.SystemSounds.Asterisk.Play(); } catch { }
                 }
             });
+        }
+
+        public void OpenVisualizer(bool startFullscreen = false) {
+            if (activeVisualizer != null && !activeVisualizer.IsDisposed) {
+                activeVisualizer.Activate();
+                if (startFullscreen) activeVisualizer.ToggleFullscreen();
+                return;
+            }
+            activeVisualizer = new TranceVisualizerForm(engine, appIcon, startFullscreen);
+            activeVisualizer.Show();
         }
 
         public void RestoreFromTray() {
@@ -2396,12 +3312,15 @@ namespace DualAudioStudio {
         static void Main(string[] args) {
             bool startMinimized = false;
             string screenshotPath = null;
+            string vizScreenshotPath = null;
             if (args != null) {
                 for (int i = 0; i < args.Length; i++) {
                     if (string.Equals(args[i], "--minimized", StringComparison.OrdinalIgnoreCase)) {
                         startMinimized = true;
                     } else if (string.Equals(args[i], "--screenshot", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
                         screenshotPath = args[i + 1];
+                    } else if (string.Equals(args[i], "--screenshot-viz", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
+                        vizScreenshotPath = args[i + 1];
                     }
                 }
             }
@@ -2410,7 +3329,7 @@ namespace DualAudioStudio {
             Mutex singleMutex = null;
             EventWaitHandle showEvent = null;
 
-            if (string.IsNullOrEmpty(screenshotPath)) {
+            if (string.IsNullOrEmpty(screenshotPath) && string.IsNullOrEmpty(vizScreenshotPath)) {
                 singleMutex = new Mutex(true, "Local\\DualAudioSynchronizer_SingleInstance_v2", out createdNew);
                 showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\DualAudioSynchronizer_ShowWindow_v2");
                 if (!createdNew) {
@@ -2422,7 +3341,12 @@ namespace DualAudioStudio {
             try {
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new MainForm(startMinimized, screenshotPath, showEvent));
+                if (!string.IsNullOrEmpty(vizScreenshotPath)) {
+                    var eng = new AudioEngine();
+                    Application.Run(new TranceVisualizerForm(eng, BrandArt.LoadAppIcon(), false, vizScreenshotPath));
+                } else {
+                    Application.Run(new MainForm(startMinimized, screenshotPath, showEvent));
+                }
             } catch (Exception ex) {
                 try {
                     string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DualAudio");
