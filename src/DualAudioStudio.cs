@@ -353,6 +353,7 @@ namespace DualAudioStudio {
         private int sampleRate;
         private int channels;
         private volatile int currentDelayMs;
+        private float smoothedGain = 1.0f;
         private ClarityPreset lastPreset = ClarityPreset.BalancedVocal;
 
         private BiquadPeakingFilter eqLeft = new BiquadPeakingFilter();
@@ -374,6 +375,15 @@ namespace DualAudioStudio {
             float gain = (preset == ClarityPreset.ExtraCrisp) ? 5.5f : 3.5f;
             eqLeft.Configure(sampleRate, 2800f, gain, 0.95f);
             eqRight.Configure(sampleRate, 2800f, gain, 0.95f);
+        }
+
+        // 4-point Cubic Hermite (Catmull-Rom) spline interpolation for audiophile-grade drift resampling
+        private static float Hermite4pt(float frac, float ym1, float y0, float y1, float y2) {
+            float c0 = y0;
+            float c1 = 0.5f * (y1 - ym1);
+            float c2 = ym1 - 2.5f * y0 + 2.0f * y1 - 0.5f * y2;
+            float c3 = 0.5f * (y2 - ym1) + 1.5f * (y0 - y1);
+            return ((c3 * frac + c2) * frac + c1) * frac + c0;
         }
 
         public int DelayMs {
@@ -403,13 +413,15 @@ namespace DualAudioStudio {
         }
 
         // Renders outFrames into pOutput while reading inFrames consumed at the target delay offset.
-        // When outFrames != inFrames (e.g. +-1 frame drift correction), uses linear interpolation so there is zero click!
+        // Uses 4-point Cubic Hermite interpolation & smooth gain envelope so phase lock and mute transitions are 100% click-free.
         public unsafe void RenderOutput(IntPtr pOutput, int inFrames, int outFrames, float volume, bool isMuted, ClarityPreset preset, SpeakerChannelMode channelMode = SpeakerChannelMode.Stereo) {
             if (outFrames <= 0 || pOutput == IntPtr.Zero) return;
             if (preset != lastPreset) UpdateEq(preset);
 
             float* pOut = (float*)pOutput;
-            if (isMuted || volume <= 0.0005f) {
+            float targetGain = isMuted ? 0f : volume;
+            if (targetGain <= 0.0005f && smoothedGain <= 0.0005f) {
+                smoothedGain = 0f;
                 int totalFloats = outFrames * channels;
                 for (int i = 0; i < totalFloats; i++) pOut[i] = 0f;
                 return;
@@ -441,11 +453,12 @@ namespace DualAudioStudio {
                     float pos = i * step;
                     int idx0 = (int)pos;
                     float frac = pos - idx0;
-                    int a = (startFrame + idx0) % capacityFrames;
-                    int b = a + 1;
-                    if (b >= capacityFrames) b = 0;
-                    l = ringL[a] + (ringL[b] - ringL[a]) * frac;
-                    r = ringR[a] + (ringR[b] - ringR[a]) * frac;
+                    int i0 = (startFrame + idx0) % capacityFrames;
+                    int im1 = i0 - 1; if (im1 < 0) im1 += capacityFrames;
+                    int i1 = i0 + 1; if (i1 >= capacityFrames) i1 -= capacityFrames;
+                    int i2 = i1 + 1; if (i2 >= capacityFrames) i2 -= capacityFrames;
+                    l = Hermite4pt(frac, ringL[im1], ringL[i0], ringL[i1], ringL[i2]);
+                    r = Hermite4pt(frac, ringR[im1], ringR[i0], ringR[i1], ringR[i2]);
                 }
 
                 if (channelMode == SpeakerChannelMode.MonoSum) {
@@ -464,8 +477,9 @@ namespace DualAudioStudio {
                     r = eqRight.Process(r);
                 }
 
-                l *= volume;
-                r *= volume;
+                smoothedGain += (targetGain - smoothedGain) * 0.008f;
+                l *= smoothedGain;
+                r *= smoothedGain;
 
                 // Soft knee limiter to prevent harsh digital clipping at >100% volume or EQ boost
                 if (l > 0.98f) l = 0.98f + 0.02f * (float)Math.Tanh((l - 0.98f) * 10f);
@@ -908,7 +922,7 @@ namespace DualAudioStudio {
             }
 
             TextRenderer.DrawText(g, this.Text, this.Font, new Rectangle(0, 0, this.Width, this.Height),
-                this.ForeColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+                this.ForeColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
         }
     }
 
@@ -1091,6 +1105,173 @@ namespace DualAudioStudio {
             }
         }
     }
+
+    class ModernDropdown : Control {
+        private List<object> items = new List<object>();
+        private int selectedIndex = -1;
+        private bool isHovered = false;
+        private ContextMenuStrip menu;
+        public Color BorderColor = Color.FromArgb(95, 56, 189, 248);
+        public Color BaseColor = Color.FromArgb(28, 33, 54);
+        public Color HoverColor = Color.FromArgb(36, 42, 68);
+        public Color ArrowColor = Color.FromArgb(56, 189, 248);
+        public event EventHandler SelectedIndexChanged;
+
+        public List<object> Items { get { return items; } }
+
+        public int SelectedIndex {
+            get { return selectedIndex; }
+            set {
+                int clamped = (items.Count == 0) ? -1 : Math.Max(0, Math.Min(items.Count - 1, value));
+                if (selectedIndex != clamped) {
+                    selectedIndex = clamped;
+                    Invalidate();
+                    if (SelectedIndexChanged != null) SelectedIndexChanged(this, EventArgs.Empty);
+                }
+            }
+        }
+
+        public object SelectedItem {
+            get { return (selectedIndex >= 0 && selectedIndex < items.Count) ? items[selectedIndex] : null; }
+        }
+
+        public ModernDropdown() {
+            this.Size = new Size(360, 30);
+            this.Cursor = Cursors.Hand;
+            this.ForeColor = Color.White;
+            this.Font = new Font("Segoe UI Semibold", 9.2f, FontStyle.Bold);
+            this.DoubleBuffered = true;
+            this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.OptimizedDoubleBuffer, true);
+            menu = new ContextMenuStrip {
+                BackColor = Color.FromArgb(26, 30, 48),
+                ForeColor = Color.White,
+                ShowImageMargin = false,
+                Font = new Font("Segoe UI", 9.2f)
+            };
+        }
+
+        public void ClearItems() {
+            items.Clear();
+            selectedIndex = -1;
+            Invalidate();
+        }
+
+        public void AddItem(object item) {
+            items.Add(item);
+            if (selectedIndex < 0) selectedIndex = 0;
+            Invalidate();
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { isHovered = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { isHovered = false; Invalidate(); base.OnMouseLeave(e); }
+
+        protected override void OnMouseClick(MouseEventArgs e) {
+            base.OnMouseClick(e);
+            if (e.Button == MouseButtons.Left && items.Count > 0) {
+                menu.Items.Clear();
+                for (int i = 0; i < items.Count; i++) {
+                    int idx = i;
+                    string txt = (i == selectedIndex ? "\u2714  " : "     ") + items[i].ToString();
+                    var mi = menu.Items.Add(txt);
+                    mi.ForeColor = (i == selectedIndex) ? ArrowColor : Color.FromArgb(226, 232, 240);
+                    mi.BackColor = Color.FromArgb(26, 30, 48);
+                    mi.Click += (s, ev) => { SelectedIndex = idx; };
+                }
+                menu.Show(this, new Point(0, this.Height + 2));
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e) {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            g.Clear(this.Parent != null ? this.Parent.BackColor : Color.FromArgb(20, 23, 38));
+
+            var rect = new RectangleF(1f, 1f, this.Width - 2.5f, this.Height - 2.5f);
+            using (var path = BrandArt.RoundRect(rect.X, rect.Y, rect.Width, rect.Height, 7f))
+            using (var br = new SolidBrush(isHovered ? HoverColor : BaseColor))
+            using (var pen = new Pen(isHovered ? Color.FromArgb(165, ArrowColor) : BorderColor, 1.2f)) {
+                g.FillPath(br, path);
+                g.DrawPath(pen, path);
+            }
+
+            string display = SelectedItem != null ? SelectedItem.ToString() : "";
+            var textRect = new Rectangle(12, 0, this.Width - 36, this.Height);
+            TextRenderer.DrawText(g, display, this.Font, textRect, this.ForeColor,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+
+            // Draw sleek vector chevron arrow on right
+            float ax = this.Width - 18f;
+            float ay = this.Height * 0.5f - 2f;
+            using (var arrowPen = new Pen(ArrowColor, 1.8f)) {
+                arrowPen.StartCap = LineCap.Round;
+                arrowPen.EndCap = LineCap.Round;
+                g.DrawLine(arrowPen, ax - 4.5f, ay, ax, ay + 4.5f);
+                g.DrawLine(arrowPen, ax, ay + 4.5f, ax + 4.5f, ay);
+            }
+        }
+    }
+
+    class ModernCheck : Control {
+        private bool isChecked = true;
+        private bool isHovered = false;
+        public event EventHandler CheckedChanged;
+
+        public bool Checked {
+            get { return isChecked; }
+            set {
+                if (isChecked != value) {
+                    isChecked = value;
+                    Invalidate();
+                    if (CheckedChanged != null) CheckedChanged(this, EventArgs.Empty);
+                }
+            }
+        }
+
+        public ModernCheck() {
+            this.Size = new Size(215, 24);
+            this.Cursor = Cursors.Hand;
+            this.ForeColor = Color.FromArgb(203, 213, 225);
+            this.Font = new Font("Segoe UI", 9.2f);
+            this.DoubleBuffered = true;
+            this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { isHovered = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { isHovered = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnClick(EventArgs e) { Checked = !Checked; base.OnClick(e); }
+
+        protected override void OnPaint(PaintEventArgs e) {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            g.Clear(this.Parent != null ? this.Parent.BackColor : Color.FromArgb(22, 25, 42));
+
+            float boxS = 17f;
+            float boxY = (this.Height - boxS) * 0.5f;
+            Color fill = isChecked ? Color.FromArgb(37, 99, 235) : Color.FromArgb(34, 39, 62);
+            Color border = isChecked ? Color.FromArgb(96, 165, 250) : Color.FromArgb(100, 116, 139);
+
+            using (var path = BrandArt.RoundRect(1f, boxY, boxS, boxS, 4.5f))
+            using (var br = new SolidBrush(fill))
+            using (var pen = new Pen(border, 1.3f)) {
+                g.FillPath(br, path);
+                g.DrawPath(pen, path);
+            }
+
+            if (isChecked) {
+                using (var chkPen = new Pen(Color.White, 2f)) {
+                    chkPen.StartCap = LineCap.Round;
+                    chkPen.EndCap = LineCap.Round;
+                    g.DrawLine(chkPen, 4.8f, boxY + 8.8f, 8.0f, boxY + 12.2f);
+                    g.DrawLine(chkPen, 8.0f, boxY + 12.2f, 13.8f, boxY + 5.2f);
+                }
+            }
+
+            TextRenderer.DrawText(g, this.Text, this.Font, new Rectangle(24, 0, this.Width - 24, this.Height),
+                isHovered ? Color.White : this.ForeColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+        }
+    }
     #endregion
 
     #region About Dialog
@@ -1221,12 +1402,14 @@ namespace DualAudioStudio {
         private Label lblPrimaryActive;
         private LevelMeterBar levelMeter;
         private ModernButton btnTogglePause;
-        private ComboBox cbPrimary;
-        private ComboBox cbClarity;
-        private CheckBox chkStartup;
-        private CheckBox chkCloseToTray;
+        private ModernDropdown cbPrimary;
+        private ModernDropdown cbClarity;
+        private ModernCheck chkStartup;
+        private ModernCheck chkCloseToTray;
         private System.Windows.Forms.Timer uiTimer;
         private List<Action> cardTelemetryUpdaters = new List<Action>();
+        private int hotplugTick = 0;
+        private string lastDeviceFingerprint = "";
         private bool isPopulating = false;
         private bool startMinimized = false;
         private string screenshotPath = null;
@@ -1296,8 +1479,8 @@ namespace DualAudioStudio {
 
         private void InitializeComponent() {
             this.Text = "Dual Audio Synchronizer";
-            this.Size = new Size(880, 765);
-            this.MinimumSize = new Size(840, 620);
+            this.Size = new Size(886, 788);
+            this.MinimumSize = new Size(860, 660);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.BackColor = Color.FromArgb(16, 18, 30);
             this.ForeColor = Color.FromArgb(226, 232, 240);
@@ -1443,14 +1626,14 @@ namespace DualAudioStudio {
                 AutoSize = true
             };
 
-            cbPrimary = new ComboBox {
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Width = 420,
-                Location = new Point(22, 32),
-                BackColor = Color.FromArgb(34, 38, 60),
+            cbPrimary = new ModernDropdown {
+                Width = 408,
+                Height = 29,
+                Location = new Point(22, 29),
+                BorderColor = Color.FromArgb(95, 56, 189, 248),
+                ArrowColor = Color.FromArgb(56, 189, 248),
                 ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9.5f)
+                Font = new Font("Segoe UI Semibold", 9.2f, FontStyle.Bold)
             };
             cbPrimary.SelectedIndexChanged += CbPrimary_SelectedIndexChanged;
 
@@ -1458,7 +1641,7 @@ namespace DualAudioStudio {
                 Text = "Capturing: Detecting...",
                 Font = new Font("Segoe UI", 8.2f),
                 ForeColor = Color.FromArgb(148, 163, 184),
-                Location = new Point(22, 60),
+                Location = new Point(22, 61),
                 AutoSize = true
             };
 
@@ -1467,22 +1650,22 @@ namespace DualAudioStudio {
                 UseMnemonic = false,
                 Font = new Font("Segoe UI Semibold", 8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(250, 204, 21),
-                Location = new Point(468, 10),
+                Location = new Point(452, 10),
                 AutoSize = true
             };
 
-            cbClarity = new ComboBox {
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Width = 368,
-                Location = new Point(468, 32),
-                BackColor = Color.FromArgb(34, 38, 60),
+            cbClarity = new ModernDropdown {
+                Width = 394,
+                Height = 29,
+                Location = new Point(452, 29),
+                BorderColor = Color.FromArgb(115, 250, 204, 21),
+                ArrowColor = Color.FromArgb(250, 204, 21),
                 ForeColor = Color.FromArgb(254, 240, 138),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold)
+                Font = new Font("Segoe UI Semibold", 9.0f, FontStyle.Bold)
             };
-            cbClarity.Items.Add("Balanced Vocal Clarity (+3.5 dB @ 2.8 kHz + Mono Blend) [Recommended]");
-            cbClarity.Items.Add("Extra Crisp Speech (+5.5 dB @ 2.8 kHz + Strong Center Focus)");
-            cbClarity.Items.Add("Flat Studio Pass-Through (No EQ / Original Stereo)");
+            cbClarity.AddItem("Balanced Vocal Clarity (+3.5 dB @ 2.8 kHz + Mono Blend)");
+            cbClarity.AddItem("Extra Crisp Speech (+5.5 dB @ 2.8 kHz + Center Focus)");
+            cbClarity.AddItem("Flat Studio Pass-Through (No EQ / Original Stereo)");
             cbClarity.SelectedIndex = 0;
             cbClarity.SelectedIndexChanged += (s, e) => {
                 if (engine == null) return;
@@ -1497,7 +1680,7 @@ namespace DualAudioStudio {
                 UseMnemonic = false,
                 Font = new Font("Segoe UI", 8.2f),
                 ForeColor = Color.FromArgb(148, 163, 184),
-                Location = new Point(468, 60),
+                Location = new Point(452, 61),
                 AutoSize = true
             };
 
@@ -1511,15 +1694,16 @@ namespace DualAudioStudio {
             // 3. Section Subheader
             var listHeader = new Panel {
                 Dock = DockStyle.Top,
-                Height = 36,
+                Height = 34,
                 BackColor = Color.FromArgb(16, 18, 30),
-                Padding = new Padding(22, 10, 22, 0)
+                Padding = new Padding(22, 8, 22, 0)
             };
             var lblSecTitle = new Label {
-                Text = "SECONDARY SPEAKERS  \u2022  Toggle ON to mirror audio simultaneously with automatic \u00B11 ms drift lock",
+                Text = "SECONDARY SPEAKERS  \u2022  Auto-detected & phase-locked (32-bit Float \u2022 4-Pt Cubic Hermite Sync)",
+                UseMnemonic = false,
                 Font = new Font("Segoe UI Semibold", 8.8f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(148, 163, 184),
-                Location = new Point(22, 10),
+                Location = new Point(22, 8),
                 AutoSize = true
             };
             listHeader.Controls.Add(lblSecTitle);
@@ -1537,13 +1721,11 @@ namespace DualAudioStudio {
                 }
             };
 
-            chkStartup = new CheckBox {
-                Text = "Start with Windows (Tray)",
-                ForeColor = Color.FromArgb(203, 213, 225),
-                AutoSize = true,
-                Location = new Point(22, 17),
-                Checked = true,
-                Cursor = Cursors.Hand
+            chkStartup = new ModernCheck {
+                Text = "Start automatically with Windows",
+                Size = new Size(216, 24),
+                Location = new Point(22, 16),
+                Checked = true
             };
             chkStartup.CheckedChanged += (s, e) => {
                 if (!isPopulating) {
@@ -1552,13 +1734,11 @@ namespace DualAudioStudio {
                 }
             };
 
-            chkCloseToTray = new CheckBox {
-                Text = "Keep in System Tray on close",
-                ForeColor = Color.FromArgb(203, 213, 225),
-                AutoSize = true,
-                Location = new Point(236, 17),
-                Checked = true,
-                Cursor = Cursors.Hand
+            chkCloseToTray = new ModernCheck {
+                Text = "Keep in System Tray when closed",
+                Size = new Size(228, 24),
+                Location = new Point(244, 16),
+                Checked = true
             };
             chkCloseToTray.CheckedChanged += (s, e) => {
                 if (!isPopulating) SaveSettings();
@@ -1568,7 +1748,7 @@ namespace DualAudioStudio {
                 Text = "\u2615 Buy a Coffee / Smoke",
                 Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
                 Size = new Size(192, 34),
-                Location = new Point(488, 11),
+                Location = new Point(498, 11),
                 BaseColor = Color.FromArgb(180, 83, 9),
                 HoverColor = Color.FromArgb(217, 119, 6),
                 BorderColor = Color.FromArgb(165, 253, 224, 71),
@@ -1579,17 +1759,17 @@ namespace DualAudioStudio {
             };
 
             var btnSave = new ModernButton {
-                Text = "Save Configuration",
+                Text = "\u2714 Auto-Saved & Active",
                 Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
-                Size = new Size(146, 34),
-                Location = new Point(690, 11),
+                Size = new Size(148, 34),
+                Location = new Point(698, 11),
                 BaseColor = Color.FromArgb(22, 163, 74),
                 HoverColor = Color.FromArgb(34, 197, 94),
                 BorderColor = Color.FromArgb(120, 134, 239, 172)
             };
             btnSave.Click += (s, e) => {
                 SaveSettings();
-                lblStatusPill.Text = "\u2714 Settings Saved  \u2022  Phase Lock Active";
+                lblStatusPill.Text = "\u2714 All Settings Auto-Saved  \u2022  Phase Lock Active";
             };
 
             bottomPanel.Controls.Add(chkStartup);
@@ -1652,16 +1832,36 @@ namespace DualAudioStudio {
                 }
             };
 
-            // 7. Live Telemetry Timer (updates VU meter and buffer lock status smoothly)
+            // 7. Live Telemetry & Hotplug Auto-Detection Timer
             uiTimer = new System.Windows.Forms.Timer { Interval = 50 };
             uiTimer.Tick += (s, e) => {
-                if (engine == null || !this.Visible) return;
+                if (engine == null) return;
+
+                // Automatically detect newly connected/disconnected Bluetooth or USB speakers every ~2.5s
+                hotplugTick++;
+                if (hotplugTick >= 50) {
+                    hotplugTick = 0;
+                    try {
+                        var curDevs = DeviceHelper.GetAllRenderDevices();
+                        string fp = DeviceHelper.GetDefaultRenderDeviceId() + "|";
+                        for (int i = 0; i < curDevs.Count; i++) fp += curDevs[i].Item1 + ";";
+                        if (!string.IsNullOrEmpty(lastDeviceFingerprint) && fp != lastDeviceFingerprint) {
+                            lastDeviceFingerprint = fp;
+                            RefreshDevices();
+                            SaveSettings();
+                        } else if (string.IsNullOrEmpty(lastDeviceFingerprint)) {
+                            lastDeviceFingerprint = fp;
+                        }
+                    } catch { }
+                }
+
+                if (!this.Visible) return;
                 levelMeter.LevelL = engine.PeakLevelLeft;
                 levelMeter.LevelR = engine.PeakLevelRight;
                 levelMeter.Invalidate();
 
                 if (!string.IsNullOrEmpty(engine.ActivePrimaryName)) {
-                    string targetTxt = "Capturing: " + engine.ActivePrimaryName + "  (" + engine.SampleRate + " Hz 32-bit Float)";
+                    string targetTxt = "Capturing: " + engine.ActivePrimaryName + "  (" + engine.SampleRate + " Hz 32-bit IEEE Float)";
                     if (lblPrimaryActive.Text != targetTxt) lblPrimaryActive.Text = targetTxt;
                 }
                 foreach (var updater in cardTelemetryUpdaters) updater();
@@ -1796,12 +1996,12 @@ namespace DualAudioStudio {
                 var devices = DeviceHelper.GetAllRenderDevices();
                 string defId = DeviceHelper.GetDefaultRenderDeviceId();
 
-                cbPrimary.Items.Clear();
-                cbPrimary.Items.Add(new DeviceItem("", "Follow Windows Default Output (Recommended)"));
+                cbPrimary.ClearItems();
+                cbPrimary.AddItem(new DeviceItem("", "Follow Windows Default Output (Recommended)"));
                 int selectedIdx = 0;
 
                 for (int i = 0; i < devices.Count; i++) {
-                    cbPrimary.Items.Add(new DeviceItem(devices[i].Item1, devices[i].Item2));
+                    cbPrimary.AddItem(new DeviceItem(devices[i].Item1, devices[i].Item2));
                     if (!string.IsNullOrEmpty(engine.SelectedPrimaryId) && devices[i].Item1 == engine.SelectedPrimaryId) {
                         selectedIdx = i + 1;
                     }
@@ -1881,18 +2081,18 @@ namespace DualAudioStudio {
 
         private Control CreateSpeakerCard(SecondarySpeaker spk) {
             var card = new Panel {
-                Width = 812,
-                Height = 148,
+                Width = 824,
+                Height = 138,
                 BackColor = Color.FromArgb(24, 27, 44),
-                Margin = new Padding(0, 0, 0, 12),
-                Padding = new Padding(18, 14, 18, 14)
+                Margin = new Padding(0, 0, 0, 10),
+                Padding = new Padding(18, 12, 18, 12)
             };
 
             card.Paint += (s, e) => {
                 var g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 Color borderCol = spk.Enabled
-                    ? Color.FromArgb(115, 56, 189, 248)
+                    ? Color.FromArgb(125, 56, 189, 248)
                     : Color.FromArgb(45, 100, 116, 139);
                 using (var path = BrandArt.RoundRect(1f, 1f, card.Width - 3f, card.Height - 3f, 14f))
                 using (var pen = new Pen(borderCol, 1.4f)) {
@@ -1902,23 +2102,31 @@ namespace DualAudioStudio {
 
             var toggle = new ToggleSwitch {
                 Checked = spk.Enabled,
-                Location = new Point(18, 15)
+                Location = new Point(18, 13)
             };
 
             var lblName = new Label {
                 Text = spk.Name,
-                Font = new Font("Segoe UI Semibold", 11.5f, FontStyle.Bold),
+                Font = new Font("Segoe UI Semibold", 11.2f, FontStyle.Bold),
                 ForeColor = spk.Enabled ? Color.White : Color.FromArgb(148, 163, 184),
                 AutoSize = true,
-                Location = new Point(80, 14)
+                Location = new Point(80, 12)
+            };
+
+            var lblSpec = new Label {
+                Text = "32-bit Float \u2022 4-Pt Hermite Sync",
+                Font = new Font("Segoe UI", 8f),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                AutoSize = true,
+                Location = new Point(380, 16)
             };
 
             var lblTelemetry = new Label {
-                Text = spk.Enabled ? "\u25CF DRIFT-LOCKED  \u2022  Buffer: 10.0 ms" : "\u25CB STANDBY",
+                Text = spk.Enabled ? "\u25CF PHASE-LOCKED  \u2022  Queue: 10.0 ms" : "\u25CB STANDBY",
                 Font = new Font("Segoe UI Semibold", 8.5f, FontStyle.Bold),
                 ForeColor = spk.Enabled ? Color.FromArgb(74, 222, 128) : Color.FromArgb(100, 116, 139),
                 AutoSize = true,
-                Location = new Point(565, 17)
+                Location = new Point(580, 15)
             };
 
             cardTelemetryUpdaters.Add(() => {
@@ -1945,7 +2153,7 @@ namespace DualAudioStudio {
                 Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(125, 211, 252),
                 Size = new Size(155, 22),
-                Location = new Point(18, 56)
+                Location = new Point(18, 52)
             };
 
             var slDelay = new ModernSlider {
@@ -1954,14 +2162,14 @@ namespace DualAudioStudio {
                 Value = spk.DelayMs,
                 AccentColor = Color.FromArgb(56, 189, 248),
                 Size = new Size(330, 26),
-                Location = new Point(175, 53)
+                Location = new Point(175, 49)
             };
 
-            var btnM5 = new ModernButton { Text = "-5 ms", Size = new Size(54, 26), Location = new Point(518, 53), Font = new Font("Segoe UI", 8.2f) };
-            var btnM1 = new ModernButton { Text = "-1 ms", Size = new Size(50, 26), Location = new Point(576, 53), Font = new Font("Segoe UI", 8.2f) };
-            var btnP1 = new ModernButton { Text = "+1 ms", Size = new Size(50, 26), Location = new Point(630, 53), Font = new Font("Segoe UI", 8.2f) };
-            var btnP5 = new ModernButton { Text = "+5 ms", Size = new Size(54, 26), Location = new Point(684, 53), Font = new Font("Segoe UI", 8.2f) };
-            var btnZero = new ModernButton { Text = "0 ms", Size = new Size(50, 26), Location = new Point(742, 53), Font = new Font("Segoe UI", 8.2f), ForeColor = Color.FromArgb(148, 163, 184) };
+            var btnM5 = new ModernButton { Text = "-5 ms", Size = new Size(54, 26), Location = new Point(518, 49), Font = new Font("Segoe UI", 8.2f) };
+            var btnM1 = new ModernButton { Text = "-1 ms", Size = new Size(50, 26), Location = new Point(576, 49), Font = new Font("Segoe UI", 8.2f) };
+            var btnP1 = new ModernButton { Text = "+1 ms", Size = new Size(50, 26), Location = new Point(630, 49), Font = new Font("Segoe UI", 8.2f) };
+            var btnP5 = new ModernButton { Text = "+5 ms", Size = new Size(54, 26), Location = new Point(684, 49), Font = new Font("Segoe UI", 8.2f) };
+            var btnZero = new ModernButton { Text = "0 ms", Size = new Size(54, 26), Location = new Point(742, 49), Font = new Font("Segoe UI", 8.2f), ForeColor = Color.FromArgb(148, 163, 184) };
 
             Action<int> setDelay = (d) => {
                 d = Math.Max(0, Math.Min(500, d));
@@ -1986,7 +2194,7 @@ namespace DualAudioStudio {
                 Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(166, 227, 161),
                 Size = new Size(155, 22),
-                Location = new Point(18, 98)
+                Location = new Point(18, 92)
             };
 
             var slVol = new ModernSlider {
@@ -1995,7 +2203,7 @@ namespace DualAudioStudio {
                 Value = initVolPct,
                 AccentColor = Color.FromArgb(74, 222, 128),
                 Size = new Size(330, 26),
-                Location = new Point(175, 95)
+                Location = new Point(175, 89)
             };
             slVol.ValueChanged += (s, e) => {
                 spk.Volume = slVol.Value / 100.0f;
@@ -2006,7 +2214,7 @@ namespace DualAudioStudio {
             var btn100 = new ModernButton {
                 Text = "100%",
                 Size = new Size(54, 26),
-                Location = new Point(518, 95),
+                Location = new Point(518, 89),
                 Font = new Font("Segoe UI", 8.2f)
             };
             btn100.Click += (s, e) => {
@@ -2019,7 +2227,7 @@ namespace DualAudioStudio {
             var btnMute = new ModernButton {
                 Text = spk.IsMuted ? "Unmute Speaker" : "Mute Speaker",
                 Size = new Size(106, 26),
-                Location = new Point(576, 95),
+                Location = new Point(576, 89),
                 Font = new Font("Segoe UI Semibold", 8.5f, FontStyle.Bold),
                 BaseColor = spk.IsMuted ? Color.FromArgb(185, 28, 28) : Color.FromArgb(40, 44, 68)
             };
@@ -2040,8 +2248,8 @@ namespace DualAudioStudio {
 
             var btnChannel = new ModernButton {
                 Text = getModeLabel(spk.ChannelMode),
-                Size = new Size(106, 26),
-                Location = new Point(686, 95),
+                Size = new Size(110, 26),
+                Location = new Point(686, 89),
                 Font = new Font("Segoe UI", 8.2f),
                 ForeColor = Color.FromArgb(186, 230, 253)
             };
@@ -2063,6 +2271,7 @@ namespace DualAudioStudio {
 
             card.Controls.Add(toggle);
             card.Controls.Add(lblName);
+            card.Controls.Add(lblSpec);
             card.Controls.Add(lblTelemetry);
             card.Controls.Add(lblDelay);
             card.Controls.Add(slDelay);
