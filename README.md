@@ -16,11 +16,26 @@
 <p align="center">
   <a href="https://lin4cre.github.io/dual-audio-synchronizer/"><strong>🌐 Live Website</strong></a> •
   <a href="https://github.com/LIN4CRE/dual-audio-synchronizer/releases/latest/download/DualAudioStudio.exe"><strong>⬇️ Direct Download (.exe)</strong></a> •
+  <a href="#-watch-the-26-second-video-showcase"><strong>🎬 Video Showcase</strong></a> •
   <a href="#-instant-1-line-install-or-portable-download"><strong>⚡ 1-Line Install</strong></a> •
   <a href="#-how-it-compares"><strong>📊 Comparison</strong></a> •
   <a href="https://paypal.me/dlinacre16"><strong>☕🚬 Buy Me a Coffee / Smoke</strong></a>
 </p>
 
+</div>
+
+---
+
+## 🎬 Watch the 26-Second Video Showcase
+
+<div align="center">
+  <a href="https://lin4cre.github.io/dual-audio-synchronizer/assets/tiktok_promo.mp4" title="Click to watch Full HD 1080x1920 Video with Sound & Voiceover">
+    <img src="assets/tiktok_preview.gif" alt="Dual Audio Synchronizer v2.0 Video Showcase (Click for Full Audio & HD)" width="320" />
+  </a>
+  <p>
+    <strong>🔊 <a href="https://lin4cre.github.io/dual-audio-synchronizer/assets/tiktok_promo.mp4">Click Here to Watch in Full HD (1080×1920) with Neural Voiceover & 126 BPM Trance Audio</a></strong><br />
+    <em>Or play it directly in the embedded player on the <a href="https://lin4cre.github.io/dual-audio-synchronizer/#video-showcase">Live Website</a>!</em>
+  </p>
 </div>
 
 ---
